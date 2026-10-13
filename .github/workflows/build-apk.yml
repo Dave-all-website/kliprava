@@ -1,0 +1,87 @@
+name: Build Kliprava APK
+
+on:
+  workflow_dispatch: # Memungkinkan tombol "Run workflow" manual di GitHub
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - 'android-app/**'
+      - 'frontend/**'
+      - '.github/workflows/build-apk.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build Frontend Bundled Assets
+        working-directory: ./frontend
+        run: |
+          npm ci
+          VITE_BASE_PATH='./' npm run build
+          rm -rf ../android-app/app/src/main/assets/web
+          mkdir -p ../android-app/app/src/main/assets/web
+          cp -r dist/* ../android-app/app/src/main/assets/web/
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Make Gradlew Executable
+        run: chmod +x android-app/gradlew
+
+      - name: Build Debug APK with Gradle
+        working-directory: ./android-app
+        run: ./gradlew assembleDebug --stacktrace --no-daemon
+
+      - name: Prepare Release APK
+        run: |
+          mkdir -p release-apk
+          cp android-app/app/build/outputs/apk/debug/*.apk release-apk/kliprava-v1.0.0.apk
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kliprava-App-Debug
+          path: release-apk/kliprava-v1.0.0.apk
+          retention-days: 14
+
+      - name: Release APK to GitHub Releases
+        uses: softprops/action-gh-release@v2
+        if: github.ref == 'refs/heads/main'
+        with:
+          tag_name: v1.0.0
+          name: "📱 Kliprava Android App v1.0.0 (Standalone Bundled)"
+          body: |
+            ### 🌿 Kliprava Android Application (Standalone Bundled Edition)
+            Unduh file APK Kliprava langsung ke smartphone Android Anda.
+            
+            - **Arsitektur**: Standalone Embedded Assets (Antarmuka React 19 tertanam 100% di dalam APK — Pemuatan instan tanpa memuat live web).
+            - **Fitur**: Native Android DownloadManager MP4 & MP3, Cloud API Engine (FastAPI + yt-dlp + FFmpeg), Offline Zen Screen.
+            - **Nama Berkas**: `kliprava-v1.0.0.apk`
+          files: release-apk/kliprava-v1.0.0.apk
+          generate_release_notes: false

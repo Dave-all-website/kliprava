@@ -1,0 +1,22 @@
+# Hobby deployment; see docs/hosting-gratis.md for free-tier limitations.
+services:
+  - type: web
+    name: kliprava-api
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/health
+    autoDeployTrigger: commit
+    envVars:
+      - key: APP_NAME
+        value: Kliprava Converter Service
+      - key: PORT
+        value: "8080"
+      - key: TEMP_DIR
+        value: /app/temp_media
+      - key: MAX_VIDEO_HEIGHT
+        value: "480"
+      - key: PYTHONUNBUFFERED
+        value: "1"

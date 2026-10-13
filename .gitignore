@@ -1,0 +1,42 @@
+# Dependencies
+node_modules/
+frontend/node_modules/
+venv/
+.venv/
+
+# Python Cache
+__pycache__/
+.pytest_cache/
+*.py[cod]
+*$py.class
+*.so
+
+# Environment Variables
+.env
+.env*
+*.env
+*.env.*
+
+# Session cookies belong in local files or deployment secrets, never in Git.
+cookies*.txt
+env_cookies.txt
+
+# Temporary Media & Test Files
+backend/temp_media/*
+!backend/temp_media/.gitkeep
+temp_media/*
+!temp_media/.gitkeep
+scratch/
+*.tmp
+
+# Frontend Build
+frontend/dist/
+frontend/build/
+
+# IDE & OS Files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.log
+

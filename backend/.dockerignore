@@ -1,0 +1,11 @@
+venv/
+__pycache__/
+temp_media/
+*.pyc
+cookies_douyin.txt
+cookies*.txt
+env_cookies.txt
+.env
+.env.*
+.venv/
+.pytest_cache/

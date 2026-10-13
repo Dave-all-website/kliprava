@@ -1,0 +1,13 @@
+.git/
+**/.venv/
+**/venv/
+**/__pycache__/
+**/.pytest_cache/
+**/node_modules/
+frontend/dist/
+temp_media/
+backend/temp_media/
+**/.env
+**/.env.*
+**/cookies*.txt
+**/env_cookies.txt

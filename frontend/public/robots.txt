@@ -1,0 +1,6 @@
+# https://www.robotstxt.org/robotstxt.html
+User-agent: *
+Allow: /
+
+# Sitemap Google Search Console
+Sitemap: https://omniklip.vercel.app/sitemap.xml

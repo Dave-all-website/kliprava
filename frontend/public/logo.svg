@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" fill="none">
+  <defs>
+    <!-- Cyan to Purple Gradient for Top Ribbon -->
+    <linearGradient id="topRibbonGrad" x1="100%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#38BDF8" />
+      <stop offset="40%" stop-color="#06B6D4" />
+      <stop offset="75%" stop-color="#8B5CF6" />
+      <stop offset="100%" stop-color="#6D28D9" />
+    </linearGradient>
+
+    <!-- Magenta to Purple Gradient for Bottom Ribbon -->
+    <linearGradient id="bottomRibbonGrad" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#F43F5E" />
+      <stop offset="40%" stop-color="#FB7185" />
+      <stop offset="75%" stop-color="#A855F7" />
+      <stop offset="100%" stop-color="#7C3AED" />
+    </linearGradient>
+
+    <!-- Inner Shadow & Ambient Glow Filter -->
+    <filter id="softGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="4" result="glow" />
+      <feComposite in="SourceGraphic" in2="glow" operator="over" />
+    </filter>
+
+    <linearGradient id="highlightGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.35" />
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0" />
+    </linearGradient>
+  </defs>
+
+  <!-- Dark Background Plate (Optional for Standalone Views) -->
+  <rect width="120" height="120" rx="28" fill="#080B14" />
+
+  <!-- Top Fluid Ribbon Curve (Cyan to Violet 'S' Top Arch) -->
+  <path
+    d="M 82 42 C 85 36 82 28 74 24 C 65 19 50 20 40 25 C 29 31 28 44 34 53 C 39 60 48 65 57 70 C 65 74 72 79 73 86 C 74 95 64 100 54 99 C 43 98 36 91 35 83"
+    stroke="url(#topRibbonGrad)"
+    stroke-width="15"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    filter="url(#softGlow)"
+  />
+
+  <!-- Bottom Fluid Ribbon Curve (Hot Pink to Violet 'S' Bottom Arch) -->
+  <path
+    d="M 38 78 C 35 84 38 92 46 96 C 55 101 70 100 80 95 C 91 89 92 76 86 67 C 81 60 72 55 63 50 C 55 46 48 41 47 34 C 46 25 56 20 66 21 C 77 22 84 29 85 37"
+    stroke="url(#bottomRibbonGrad)"
+    stroke-width="15"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    filter="url(#softGlow)"
+  />
+
+  <!-- Shimmer Highlight Layer -->
+  <path
+    d="M 78 27 C 70 23 54 22 43 27 C 33 33 32 44 37 51"
+    stroke="url(#highlightGrad)"
+    stroke-width="5"
+    stroke-linecap="round"
+  />
+  <path
+    d="M 42 93 C 50 97 66 98 77 93 C 87 87 88 76 83 69"
+    stroke="url(#highlightGrad)"
+    stroke-width="5"
+    stroke-linecap="round"
+  />
+</svg>

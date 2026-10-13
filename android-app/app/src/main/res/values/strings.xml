@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Kliprava</string>
+    
+    <!-- 
+      KLIPRAVA STANDALONE EMBEDDED ENGINE:
+      Antarmuka frontend (React 19) ditanamkan 100% secara lokal di dalam file APK 
+      (assets/web/index.html) menggunakan WebViewAssetLoader untuk performa instan tanpa latensi web.
+    -->
+    <string name="web_url">https://appassets.androidplatform.net/assets/web/index.html</string>
+    <string name="remote_fallback_url">https://omniklip.vercel.app</string>
+    
+    <string name="error_offline_title">Koneksi Terputus</string>
+    <string name="error_offline_desc">Pastikan ponsel Anda terhubung ke internet untuk mengambil dan mengunduh media.</string>
+    <string name="btn_retry">Coba Lagi</string>
+    <string name="download_started">Mengunduh media...</string>
+    <string name="download_completed">Unduhan selesai. Tersimpan di folder Download.</string>
+</resources>

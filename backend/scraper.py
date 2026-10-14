@@ -206,64 +206,28 @@ def fetch_tiksave_info(raw_url: str) -> Optional[Dict[str, Any]]:
 # 2. DOUYIN SHARE PAGE ENGINE (HTML JSON Embedded Extractor)
 # ============================================================================
 
-def _extract_douyin_share_page(video_id: str) -> Optional[Dict[str, Any]]:
-    """Mengekstrak direct mp4 dari halaman share iesdouyin tanpa signature."""
-    url = f"https://www.iesdouyin.com/share/video/{video_id}/"
+def _extract_douyin_share_page(video_id: str, share_url: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    """Read public share state while preserving the original share parameters."""
+    from douyin import parse_share_video
+    url = share_url or f"https://www.iesdouyin.com/share/video/{video_id}/"
+    headers = {"User-Agent": MOBILE_UA, "Referer": "https://www.douyin.com/"}
     try:
-        resp = requests.get(
-            url,
-            headers={"User-Agent": MOBILE_UA, "Referer": "https://www.douyin.com/"},
-            timeout=5,
-            verify=False,
-        )
-        if resp.status_code == 200:
-            m = re.search(r"window\._ROUTER_DATA\s*=\s*(\{.*?\})\s*</script>", resp.text, re.S)
-            if m:
-                data = json.loads(m.group(1))
-                item = None
-                for k, v in data.items():
-                    if isinstance(v, dict) and "item_list" in v:
-                        item = v["item_list"][0]
-                        break
-                if not item and "loaderData" in data and isinstance(data["loaderData"], dict):
-                    for lv in data["loaderData"].values():
-                        if isinstance(lv, dict):
-                            if "videoDetail" in lv and isinstance(lv["videoDetail"], dict):
-                                item = lv["videoDetail"]
-                                break
-                            elif "itemInfo" in lv and isinstance(lv["itemInfo"], dict):
-                                item = lv["itemInfo"]
-                                break
-
-                if item:
-                    video = item.get("video") or {}
-                    play_addr = video.get("play_addr") or {}
-                    url_list = play_addr.get("url_list") or []
-                    play_url = None
-                    if url_list:
-                        play_url = url_list[0].replace("playwm", "play")
-                    elif play_addr.get("uri"):
-                        play_url = f"https://www.iesdouyin.com/aweme/v1/play/?video_id={play_addr['uri']}&ratio=1080p&line=0"
-
-                    dur = video.get("duration") or item.get("duration") or 0
-                    duration = round(dur / 1000) if dur > 1000 else int(dur or 60)
-                    cover = (video.get("cover") or {}).get("url_list") or []
-
-                    if play_url:
-                        return {
-                            "title": item.get("desc") or f"Douyin Video ({video_id})",
-                            "thumbnail": cover[0] if cover else None,
-                            "duration": duration or 60,
-                            "direct_url": play_url,
-                            "canonical_url": f"https://www.douyin.com/video/{video_id}",
-                            "qualities": _quality_ladder([]),
-                            "stream_headers": {
-                                "User-Agent": MOBILE_UA,
-                                "Referer": "https://www.douyin.com/"
-                            }
-                        }
-    except Exception as e:
-        logger.debug(f"Douyin share page extraction error: {e}")
+        validate_media_page(url)
+        response, pool = open_public_stream(url, headers, timeout=(6, 10))
+        try:
+            if response.status != 200:
+                logger.info("Douyin share page returned HTTP %s", response.status)
+                return None
+            html = response.read(2 * 1024 * 1024, decode_content=True).decode("utf-8", errors="replace")
+            info = parse_share_video(html, video_id, url, headers)
+            if info:
+                info["qualities"] = _quality_ladder(info["_formats"])
+            return info
+        finally:
+            response.close()
+            pool.close()
+    except Exception as exc:
+        logger.debug("Douyin share page extraction failed: %s", exc)
     return None
 
 
@@ -653,43 +617,35 @@ def extract_media_info(raw_url: str) -> Dict[str, Any]:
             raise Exception("Layanan TikTok sedang sibuk atau URL tidak dapat diakses saat ini. Silakan coba sesaat lagi.")
 
     # --- 2. DOUYIN ---
-    elif "douyin.com" in url_low or "iesdouyin.com" in url_low:
-        logger.info(f"[Platform Douyin] Memproses: {target_url}")
+    elif platform_name(target_url) == "DOUYIN":
+        logger.info("[Platform Douyin] Memproses: %s", target_url.split("?")[0])
         vid_match = DOUYIN_ID_RE.search(target_url) or DOUYIN_ID_RE.search(clean_target)
-        douyin_urls = []
-        video_id = None
-        if vid_match:
-            video_id = vid_match.group(1)
-            douyin_urls = [
-                f"https://www.douyin.com/video/{video_id}",
-                f"https://www.iesdouyin.com/share/video/{video_id}/",
-            ]
-        else:
-            douyin_urls = [target_url]
-
-        # Jalur 1: TikWM API (Cepat, No-Watermark)
-        for d_url in douyin_urls:
-            info = fetch_tikwm_info(d_url)
-            if info:
-                return info
-
-        # Jalur 2: Halaman Share iesdouyin
-        if video_id:
-            info = _extract_douyin_share_page(video_id)
-            if info:
-                return info
-
-        # Jalur 3: yt-dlp dengan URL kanonikal
-        for d_url in douyin_urls:
-            try:
-                return _extract_with_ytdlp(d_url, custom_headers={"User-Agent": DESKTOP_UA, "Referer": "https://www.douyin.com/"})
-            except Exception:
-                pass
-
-        raise Exception(
-            "Video Douyin tidak dapat diekstrak karena pembatasan wilayah (geo-restriction/anti-bot) dari server Douyin China. "
-            "Saran: Silakan gunakan fitur 'Salin Tautan' (share link) dari aplikasi Douyin (format v.douyin.com/...) atau gunakan tautan versi TikTok."
-        )
+        if not vid_match:
+            raise ValueError("Tautan pendek Douyin belum dapat dibuka. Coba salin ulang tautan postingan yang masih aktif.")
+        video_id = vid_match.group(1)
+        share_url = target_url if "iesdouyin.com" in (urllib.parse.urlsplit(target_url).hostname or "") else None
+        info = _extract_douyin_share_page(video_id, share_url)
+        if info:
+            return info
+        canonical_url = f"https://www.douyin.com/video/{video_id}"
+        info = fetch_tikwm_info(canonical_url)
+        if info:
+            return info
+        try:
+            return _extract_with_ytdlp(canonical_url, custom_headers={"User-Agent": DESKTOP_UA, "Referer": "https://www.douyin.com/"})
+        except Exception as exc:
+            logger.warning("Douyin extraction failed for %s: %s", video_id, exc)
+            message = str(exc).lower()
+            if "fresh cookies" in message or "403" in message or "forbidden" in message:
+                raise ValueError(
+                    "Douyin menolak akses dari server dan meminta cookie sesi yang masih berlaku. "
+                    "Link sudah dikenali. Administrator perlu mengatur DOUYIN_COOKIES di Railway; "
+                    "jika koneksi server tetap ditolak, periksa DOUYIN_PROXY."
+                ) from exc
+            raise ValueError(
+                "Data video Douyin belum dapat diambil. Pastikan postingan masih tersedia dan dapat dibuka di Douyin. "
+                "Detail kegagalan telah dicatat di log server."
+            ) from exc
 
     # --- 3. REDNOTE / XIAOHONGSHU ---
     elif platform_name(target_url) == "REDNOTE":

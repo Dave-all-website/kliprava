@@ -32,3 +32,23 @@ node --test frontend\src\mediaClient.test.js
 Tes mencakup tautan pendek, URL CDN dari respons TikTok, identitas dan durasi
 RedNote, CDN cadangan, isolasi cookie, serta konversi video berdimensi ganjil.
 Tes jaringan langsung tetap diperlukan karena akses platform dapat berubah.
+
+## Douyin
+
+Backend mempertahankan parameter tautan berbagi dan mencari video dengan ID yang
+sesuai di `loaderData.videoInfoRes.item_list` maupun struktur bersarang lainnya.
+URL media yang diberikan Douyin dipakai apa adanya, termasuk URL cadangannya.
+
+Jika halaman berbagi tidak memuat video dan API melaporkan `Fresh cookies` atau
+HTTP 403, link telah dikenali tetapi sesi/koneksi server belum diterima Douyin.
+Ini tidak cukup untuk menyimpulkan pembatasan wilayah atau postingan telah dihapus.
+Backend tidak lagi mengulangi panggilan API yang sama lewat dua bentuk URL.
+
+Administrator dapat menambahkan `DOUYIN_COOKIES` berformat Netscape atau Base64
+di Variables layanan Railway, kemudian melakukan redeploy. Cookie hanya perlu
+dipasang melalui pengaturan rahasia layanan, bukan dikirim di chat atau Git.
+Variabel tersebut dipakai oleh jalur yt-dlp, termasuk fallback unduhan.
+`DOUYIN_PROXY` tersedia jika diperlukan untuk koneksi keluar yang diizinkan.
+Cookie/proxy tidak menjamin semua postingan dapat diakses; uji kembali link yang
+sama setelah konfigurasi. Halaman yang hanya dapat ditonton lewat aplikasi
+Douyin mungkin tetap tidak menyediakan video untuk backend web.

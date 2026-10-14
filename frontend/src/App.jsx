@@ -14,7 +14,7 @@ const API = backendUrl(import.meta.env.VITE_API_URL, import.meta.env.DEV);
 /* ---- 7 Platform Sosial Media ---------------------------------------------- */
 const PLATFORMS = [
   { key: 'youtube',   name: 'YouTube',   jpName: 'ユーチューブ', logo: '/logos/logo_youtube.png',   color: '#EF4444', glowClass: 'glow-youtube',   badgeClass: 'bg-red-500/15 text-red-500 border-red-500/30', match: (u) => /youtube\.com|youtu\.be/.test(u) },
-  { key: 'tiktok',    name: 'TikTok',    jpName: 'ティックトック', logo: '/logos/logo_tiktok.png',    color: '#06B6D4', glowClass: 'glow-tiktok',    badgeClass: 'bg-cyan-500/15 text-cyan-500 border-cyan-500/30', match: (u) => /tiktok\.com/.test(u) },
+  { key: 'tiktok',    name: 'TikTok',    jpName: 'ティックトック', logo: '/logos/logo_tiktok.png',    color: '#06B6D4', glowClass: 'glow-tiktok',    badgeClass: 'bg-cyan-500/15 text-cyan-500 border-cyan-500/30', match: (u) => /tiktok\.com|tt\.site/.test(u) },
   { key: 'douyin',    name: 'Douyin',    jpName: '抖音',         logo: '/logos/logo_douyin.png',    color: '#EC4899', glowClass: 'glow-douyin',    badgeClass: 'bg-pink-500/15 text-pink-500 border-pink-500/30', match: (u) => /douyin\.com/.test(u) },
   { key: 'instagram', name: 'Instagram', jpName: 'インスタグラム', logo: '/logos/logo_instagram.png', color: '#D946EF', glowClass: 'glow-instagram', badgeClass: 'bg-fuchsia-500/15 text-fuchsia-500 border-fuchsia-500/30', match: (u) => /instagram\.com/.test(u) },
   { key: 'facebook',  name: 'Facebook',  jpName: 'フェイスブック', logo: '/logos/logo_facebook.png',  color: '#3B82F6', glowClass: 'glow-facebook',  badgeClass: 'bg-blue-500/15 text-blue-500 border-blue-500/30', match: (u) => /facebook\.com|fb\.watch/.test(u) },

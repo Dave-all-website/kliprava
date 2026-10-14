@@ -13,9 +13,9 @@ class UnsafeURL(ValueError):
 def validate_media_page(url):
     parts = urlsplit(url)
     host = (parts.hostname or "").lower()
-    domains = ("youtube.com", "youtu.be", "tiktok.com", "tikwm.com", "douyin.com", "iesdouyin.com",
+    domains = ("youtube.com", "youtu.be", "tiktok.com", "tt.site", "tikwm.com", "douyin.com", "iesdouyin.com",
                "instagram.com", "instagr.am", "facebook.com", "fb.com", "fb.watch", "x.com", "twitter.com",
-               "t.co", "xiaohongshu.com", "xhslink.com")
+               "t.co", "xiaohongshu.com", "xhslink.com", "rednote.com")
     if not any(host == domain or host.endswith("." + domain) for domain in domains):
         raise UnsafeURL("Gunakan tautan dari salah satu platform media sosial yang didukung.")
     resolve_public_url(url)

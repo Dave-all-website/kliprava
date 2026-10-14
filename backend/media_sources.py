@@ -6,11 +6,11 @@ def select_sources(info, resolution="best", output_format="mp4", max_height=1080
     audio.sort(key=lambda f: (f.get("vcodec") in (None, "none"), float(f.get("abr") or f.get("tbr") or 0)))
     fallback_headers = info.get("stream_headers") or {}
 
-    def source(url, headers=None, format_id=None):
-        return {"url": url, "headers": headers or fallback_headers, "format_id": format_id}
+    def source(url, headers=None, format_id=None, backup_urls=None):
+        return {"url": url, "headers": headers or fallback_headers, "format_id": format_id, "backup_urls": backup_urls or []}
 
     def from_format(fmt):
-        return source(fmt["url"], fmt.get("http_headers"), fmt.get("format_id"))
+        return source(fmt["url"], fmt.get("http_headers"), fmt.get("format_id"), fmt.get("backup_urls"))
 
     if output_format == "mp3":
         if audio:

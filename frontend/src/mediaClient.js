@@ -1,4 +1,4 @@
-export const DEFAULT_API = 'https://convertallsosmed-production.up.railway.app';
+export const DEFAULT_API = 'https://kliprava-api-production.up.railway.app';
 
 export function backendUrl(configuredUrl, development = false) {
   const value = configuredUrl?.trim();

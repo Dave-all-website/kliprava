@@ -1,18 +1,16 @@
 import asyncio
 import json
 import logging
-import os
 import random
 import re
-import time
 from typing import Any, Dict, List, Optional
 import urllib.parse
-import uuid
 
 import requests
 import urllib3
 from config import settings
 from network import validate_media_page, open_public_stream
+from ytdlp_options import platform_name, ytdlp_options
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -28,7 +26,7 @@ MOBILE_UA = (
     "(KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
 )
 
-URL_RE = re.compile(r"https?://[^\s，,、。]+", re.IGNORECASE)
+URL_RE = re.compile(r"https?://[^\s，,、。<>\"'\[\]()]+", re.IGNORECASE)
 DOUYIN_ID_RE = re.compile(r"(?:/video/|/note/|modal_id=|/share/video/|aweme_id=|group_id=)(\d{6,})")
 REDNOTE_ID_RE = re.compile(r"(?:/explore/|/discovery/item/|/user/\w+/)?([a-f0-9]{24})", re.IGNORECASE)
 
@@ -40,7 +38,7 @@ def clean_url(text: str) -> str:
     text = text.strip()
     match = URL_RE.search(text)
     if match:
-        return match.group(0).rstrip("/")
+        return match.group(0).rstrip(")]}>\"'.,;")
     return text
 
 
@@ -51,9 +49,9 @@ def resolve_canonical_url(url: str) -> str:
     """
     if not url:
         return ""
-    low = url.lower()
-    short_markers = ("vm.tiktok.com", "vt.tiktok.com", "v.douyin.com", "xhslink.com", "t.co", "fb.watch", "bit.ly")
-    if any(m in low for m in short_markers):
+    host = (urllib.parse.urlsplit(url).hostname or "").lower()
+    short_markers = ("vm.tiktok.com", "vt.tiktok.com", "tt.site", "v.douyin.com", "xhslink.com", "t.co", "fb.watch", "bit.ly")
+    if any(host == m or host.endswith("." + m) for m in short_markers):
         try:
             # Gunakan Mobile UA untuk redirect TikTok/Douyin/XHS agar tidak tersangkut bot verification
             headers = {"User-Agent": MOBILE_UA}
@@ -135,22 +133,14 @@ def fetch_tikwm_info(raw_url: str) -> Optional[Dict[str, Any]]:
                     res = resp.json()
                     if res.get("code") == 0:
                         data = res.get("data") or {}
-                        video_id = data.get("id")
-
-                        direct_url = None
-                        if video_id:
-                            direct_url = f"https://www.tikwm.com/video/media/play/{video_id}.mp4"
-
-                        if not direct_url:
-                            direct_url = data.get("hdplay") or data.get("play") or data.get("wmplay")
-
-                        if direct_url and direct_url.startswith("//"):
-                            direct_url = "https:" + direct_url
+                        direct_url = data.get("hdplay") or data.get("play") or data.get("wmplay")
+                        if direct_url:
+                            direct_url = urllib.parse.urljoin(ep, direct_url)
 
                         if direct_url:
                             cover_url = data.get("cover")
-                            if cover_url and cover_url.startswith("/"):
-                                cover_url = "https://www.tikwm.com" + cover_url
+                            if cover_url:
+                                cover_url = urllib.parse.urljoin(ep, cover_url)
                             return {
                                 "title": data.get("title") or "Video TikTok",
                                 "thumbnail": cover_url,
@@ -306,18 +296,20 @@ def _extract_rednote_html(raw_url: str) -> Optional[Dict[str, Any]]:
             html = resp.text
 
             # 1. Ekstraksi dari window.__INITIAL_STATE__
-            m = re.search(r"window\.__INITIAL_STATE__\s*=\s*(\{.*?\})\s*</script>", html, re.S)
+            m = re.search(r"window\.__INITIAL_STATE__\s*=\s*(\{.*?\})\s*;?\s*</script>", html, re.S)
             if m:
-                clean_json = m.group(1).replace("undefined", "null")
-                data = json.loads(clean_json)
+                from yt_dlp.utils import js_to_json
+                data = json.loads(js_to_json(m.group(1)))
                 note_dict = data.get("note", {})
                 detail_map = note_dict.get("noteDetailMap", {})
 
-                target_note = None
-                if detail_map:
-                    target_note = list(detail_map.values())[0].get("note", {})
-                elif "firstNote" in note_dict:
-                    target_note = note_dict.get("firstNote", {})
+                note_match = REDNOTE_ID_RE.search(urllib.parse.urlsplit(raw_url).path)
+                note_id = note_match.group(1) if note_match else None
+                target_note = (detail_map.get(note_id) or {}).get("note")
+                if not target_note:
+                    first = note_dict.get("firstNote") or {}
+                    if not note_id or first.get("noteId") == note_id:
+                        target_note = first
 
                 if target_note:
                     raw_title = target_note.get("title") or target_note.get("desc") or "RedNote Video"
@@ -327,32 +319,50 @@ def _extract_rednote_html(raw_url: str) -> Optional[Dict[str, Any]]:
                     media = video.get("media") or {}
                     stream = media.get("stream") or {}
 
-                    video_url = None
+                    formats = []
+                    durations = []
                     for codec in ("h264", "h265", "h266", "av1"):
                         entries = stream.get(codec) or []
                         for entry in entries:
-                            cand = entry.get("masterUrl") or entry.get("mainUrl") or entry.get("backupUrl")
-                            if cand and ("http://" in cand or "https://" in cand):
-                                video_url = cand
-                                break
-                        if video_url:
-                            break
+                            backups = entry.get("backupUrls") or entry.get("backupUrl") or []
+                            if isinstance(backups, str):
+                                backups = [backups]
+                            urls = [entry.get("masterUrl"), entry.get("mainUrl"), *backups]
+                            urls = list(dict.fromkeys(u for u in urls if isinstance(u, str) and u.startswith(("https://", "http://"))))
+                            if not urls:
+                                continue
+                            if entry.get("duration"):
+                                durations.append(float(entry["duration"]) / 1000)
+                            formats.append({
+                                "url": urls[0], "backup_urls": urls[1:],
+                                "ext": "mp4",
+                                "height": entry.get("height"), "width": entry.get("width"),
+                                "vcodec": codec, "acodec": entry.get("audioCodec") or "aac",
+                                "tbr": float(entry.get("avgBitrate") or 0) / 1000,
+                            })
 
                     image_list = target_note.get("imageList") or []
                     thumbnail = image_list[0].get("urlDefault") or image_list[0].get("url") if image_list else None
 
-                    if video_url:
+                    if formats:
+                        preview = next((f for f in formats if f["vcodec"] == "h264"), formats[0])
                         return {
                             "title": title,
                             "thumbnail": thumbnail,
-                            "duration": int(video.get("duration", 60)),
-                            "direct_url": video_url,
-                            "qualities": _quality_ladder([]),
+                            "duration": max(durations) if durations else float(video.get("duration") or 60),
+                            "direct_url": preview["url"],
+                            "canonical_url": raw_url,
+                            "_formats": formats,
+                            "qualities": _quality_ladder(formats),
                             "stream_headers": {
                                 "User-Agent": DESKTOP_UA,
                                 "Referer": "https://www.xiaohongshu.com/"
                             }
                         }
+
+                # A recommendation's stream must never replace the requested note.
+                if detail_map:
+                    continue
 
             # 2. Fallback: Regex scan langsung untuk URL stream video (.mp4 di sns-video CDN)
             v_match = re.search(r'(https?:\\?/\\?/[^"\'<>\s]+?(?:sns-video|xhscdn)[^"\'<>\s]+?\.mp4[^"\'<>\s]*)', html)
@@ -365,6 +375,7 @@ def _extract_rednote_html(raw_url: str) -> Optional[Dict[str, Any]]:
                     "thumbnail": None,
                     "duration": 60,
                     "direct_url": clean_v_url,
+                    "canonical_url": raw_url,
                     "qualities": _quality_ladder([]),
                     "stream_headers": {
                         "User-Agent": DESKTOP_UA,
@@ -462,239 +473,28 @@ async def _scrape_with_playwright_stealth(url: str, platform: str) -> Dict[str, 
     }
 
 
-def _extract_youtube_fallback(url: str) -> Optional[Dict[str, Any]]:
-    """
-    Fallback extractor untuk YouTube ketika IP datacenter (seperti Railway) terkena bot protection.
-    Memanfaatkan instance Invidious publik sehat yang dideteksi secara dinamis.
-    """
-    logger.info(f"[YouTube Fallback] Mencoba fallback API terdistribusi untuk: {url}")
-    
-    yt_id_match = re.search(r"(?:v=|\/|embed\/|shorts\/)([a-zA-Z0-9_-]{11})", url)
-    video_id = yt_id_match.group(1) if yt_id_match else None
-    
-    if not video_id:
-        return None
-
-    # Dapatkan daftar instance Invidious yang sedang sehat & aktif
-    invidious_instances = [
-        "https://invidious.f5.si",
-        "https://yt.chocolatemoo53.com",
-        "https://invidious.tiekoetter.com",
-        "https://inv.nadeko.net",
-        "https://yewtu.be",
-    ]
-    try:
-        health_resp = requests.get("https://api.invidious.io/instances.json?sort_by=health", timeout=3)
-        if health_resp.status_code == 200:
-            dyn_list = []
-            for item in health_resp.json():
-                if isinstance(item, list) and len(item) > 1:
-                    info_dict = item[1]
-                    if info_dict.get("type") == "https" and info_dict.get("api"):
-                        uri = info_dict.get("uri") or f"https://{item[0]}"
-                        dyn_list.append(uri.rstrip("/"))
-            if dyn_list:
-                invidious_instances = dyn_list[:6] + invidious_instances
-    except Exception as he:
-        logger.debug(f"Gagal mengambil dynamic invidious instances: {he}")
-
-    for inv_base in invidious_instances:
-        api_url = f"{inv_base}/api/v1/videos/{video_id}"
-        try:
-            resp = requests.get(api_url, headers={"User-Agent": DESKTOP_UA}, timeout=6)
-            if resp.status_code == 200:
-                data = resp.json()
-                title = data.get("title", "YouTube Video")
-                duration = int(data.get("lengthSeconds") or 60)
-                thumb_list = data.get("videoThumbnails") or []
-                thumb = thumb_list[0].get("url") if thumb_list else None
-
-                # 1. Coba format gabungan (video + audio)
-                streams = data.get("formatStreams") or []
-                export_formats = []
-                for entry in streams + (data.get("adaptiveFormats") or []):
-                    if not entry.get("url"):
-                        continue
-                    mime = entry.get("type", "")
-                    is_audio = mime.startswith("audio")
-                    resolution_text = str(entry.get("resolution") or entry.get("qualityLabel") or "0").split("x")[-1]
-                    height_match = re.search(r"\d+", resolution_text)
-                    export_formats.append({
-                        "url": entry["url"],
-                        "height": int(height_match.group()) if height_match and not is_audio else 0,
-                        "ext": entry.get("container") or ("m4a" if is_audio else "mp4"),
-                        "vcodec": "none" if is_audio else "video",
-                        "acodec": "audio" if is_audio or entry in streams else "none",
-                        "tbr": float(entry.get("bitrate") or 0) / 1000,
-                    })
-                chosen_url = None
-                for s in streams:
-                    if s.get("url") and s.get("container") in ("mp4", "webm"):
-                        chosen_url = s["url"]
-                        break
-                
-                if not chosen_url and streams:
-                    chosen_url = streams[0].get("url")
-
-                # 2. Coba adaptiveFormats (video + audio terpisah)
-                audio_url = None
-                adaptive = data.get("adaptiveFormats") or []
-                if not chosen_url and adaptive:
-                    v_cands = [f for f in adaptive if f.get("type", "").startswith("video") and f.get("url")]
-                    a_cands = [f for f in adaptive if f.get("type", "").startswith("audio") and f.get("url")]
-                    if v_cands:
-                        v_cands.sort(key=lambda x: next((f["height"] for f in export_formats if f["url"] == x["url"]), 0))
-                        chosen_url = v_cands[-1]["url"]
-                    if a_cands:
-                        audio_url = a_cands[-1]["url"]
-
-                if chosen_url:
-                    logger.info(f"[YouTube Fallback] Berhasil via Invidious ({inv_base})")
-                    return {
-                        "title": title,
-                        "thumbnail": thumb,
-                        "duration": duration,
-                        "direct_url": chosen_url,
-                        "audio_url": audio_url,
-                        "_formats": export_formats,
-                        "qualities": _quality_ladder(export_formats),
-                        "stream_headers": {
-                            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36",
-                            "Accept": "*/*",
-                            "Referer": f"{inv_base}/"
-                        }
-                    }
-        except Exception as e:
-            logger.debug(f"Invidious instance {inv_base} failed: {e}")
-            continue
-
-    return None
-
-
-# ============================================================================
-# 5. YT-DLP EXTRACTION ENGINE (YouTube, IG, FB, X, TikTok)
-# ============================================================================
-
 def _extract_with_ytdlp(url: str, custom_headers: Optional[dict] = None) -> Dict[str, Any]:
     """Ekstraksi metadata & direct media URL menggunakan yt-dlp."""
     import yt_dlp
 
-    is_yt = "youtube.com" in url.lower() or "youtu.be" in url.lower()
-    client_strategies = (
-        [
-            ["mweb"],
-            ["android"],
-            ["web"],
-            ["ios"],
-            ["tv"],
-            None
-        ]
-        if is_yt
-        else [None]
-    )
-
-    cookie_path = os.path.join(os.path.dirname(__file__), "cookies.txt")
-    if not os.path.exists(cookie_path):
-        root_cookie = os.path.join(os.path.dirname(os.path.dirname(__file__)), "cookies.txt")
-        if os.path.exists(root_cookie):
-            cookie_path = root_cookie
-
-    last_error = None
-    info = None
-
-    for clients in client_strategies:
-        ydl_opts = {
-            "quiet": True,
-            "no_warnings": True,
-            "nocheckcertificate": True,
-            "noplaylist": True,
-            "skip_download": True,
-            "socket_timeout": 15,
-            "retries": 3,
-            "check_formats": False,
-            "js_runtimes": {"node": {}, "deno": {}},
-        }
-
-        if clients:
-            ydl_opts["extractor_args"] = {
-                "youtube": {
-                    "player_client": clients,
-                }
-            }
-
-        if custom_headers and not is_yt:
-            ydl_opts["http_headers"] = custom_headers
-
-        # Dukungan file cookies.txt lokal
-        cookie_candidates = [
-            cookie_path,
-            os.path.join(os.getcwd(), "cookies.txt"),
-            os.path.join(os.path.dirname(__file__), "cookies.txt"),
-            os.path.join(os.path.dirname(os.path.dirname(__file__)), "cookies.txt"),
-            "/app/cookies.txt"
-        ]
-        active_cookie = None
-        for cp in cookie_candidates:
-            if cp and os.path.exists(cp) and os.path.getsize(cp) > 10:
-                active_cookie = cp
-                break
-
-        if active_cookie:
-            ydl_opts["cookiefile"] = active_cookie
-
-        # Dukungan cookie via Environment Variable YOUTUBE_COOKIES (Plain text atau Base64)
-        cookies_env = os.environ.get("YOUTUBE_COOKIES", "").strip()
-        if cookies_env:
-            try:
-                import base64
-                if not ("\t" in cookies_env or "# Netscape" in cookies_env):
-                    try:
-                        decoded = base64.b64decode(cookies_env).decode("utf-8")
-                        if "# Netscape" in decoded or "\t" in decoded:
-                            cookies_env = decoded
-                    except Exception:
-                        pass
-                temp_cookie = os.path.join(os.path.dirname(__file__), "env_cookies.txt")
-                with open(temp_cookie, "w", encoding="utf-8") as cf:
-                    cf.write(cookies_env)
-                ydl_opts["cookiefile"] = temp_cookie
-            except Exception as ce:
-                logger.warning(f"Gagal memuat env YOUTUBE_COOKIES: {ce}")
-
-        # Dukungan Proxy khusus YouTube (YOUTUBE_PROXY) atau PROXIES
-        yt_proxy = os.environ.get("YOUTUBE_PROXY", "").strip()
-        if is_yt and yt_proxy:
-            ydl_opts["proxy"] = yt_proxy
-        elif settings.PROXIES:
-            p_url = random.choice(settings.PROXIES)
-            ydl_opts["proxy"] = p_url
-
-        try:
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+    overrides = {"skip_download": True, "check_formats": False}
+    if custom_headers and platform_name(url) != "YOUTUBE":
+        overrides["http_headers"] = custom_headers
+    try:
+        with ytdlp_options(url, **overrides) as options:
+            with yt_dlp.YoutubeDL(options) as ydl:
                 info = ydl.extract_info(url, download=False)
-                if info:
-                    break
-        except Exception as e:
-            last_error = e
-            if not is_yt:
-                raise e
-            logger.warning(f"YouTube extractor strategy {clients} failed: {e}. Trying fallback...")
-            continue
-    else:
-        if is_yt:
-            fallback = _extract_youtube_fallback(url)
-            if fallback:
-                return fallback
-
-        if last_error:
-            err_msg = str(last_error)
-            if "Sign in to confirm you’re not a bot" in err_msg or "bot" in err_msg.lower():
-                raise Exception(
-                    "YouTube mendeteksi IP datacenter server (Bot Protection). "
-                    "Solusi: Pasang variabel 'YOUTUBE_COOKIES' atau 'YOUTUBE_PROXY' di dashboard Railway, atau gunakan platform lain seperti TikTok, Douyin, IG, FB, X, RedNote."
-                )
-            raise last_error
-        raise Exception("Gagal mengekstrak media.")
+    except Exception as exc:
+        message = str(exc).lower()
+        if platform_name(url) == "YOUTUBE" and ("not a bot" in message or "confirm you're" in message):
+            raise ValueError(
+                "YouTube meminta verifikasi untuk koneksi server ini. "
+                "Administrator perlu mengatur YOUTUBE_COOKIES yang masih berlaku "
+                "dan, bila diperlukan, YOUTUBE_PROXY di Railway."
+            ) from exc
+        raise
+    if not info:
+        raise ValueError("Gagal mengekstrak media.")
 
     formats = info.get("formats", [])
 
@@ -796,6 +596,7 @@ def _extract_with_ytdlp(url: str, custom_headers: Optional[dict] = None) -> Dict
 
     return {
         "title": info.get("title") or "Social Media Video",
+        "canonical_url": url,
         "thumbnail": info.get("thumbnail"),
         "duration": duration,
         "direct_url": final_url,
@@ -832,15 +633,15 @@ def extract_media_info(raw_url: str) -> Dict[str, Any]:
     url_low = target_url.lower()
 
     # --- 1. TIKTOK ---
-    if "tiktok.com" in url_low or "tikwm.com" in url_low:
+    if platform_name(target_url) == "TIKTOK":
         logger.info(f"[Platform TikTok] Memproses: {target_url}")
         # Jalur Utama 1: TikWM API (Paling Cepat, No Watermark, Resolusi Penuh)
-        info = fetch_tikwm_info(target_url) or fetch_tikwm_info(clean_target)
+        info = fetch_tikwm_info(target_url)
         if info:
             return info
 
         # Jalur Cadangan 2: TikSave API
-        info_backup = fetch_tiksave_info(target_url) or fetch_tiksave_info(clean_target)
+        info_backup = fetch_tiksave_info(target_url)
         if info_backup:
             return info_backup
 
@@ -891,10 +692,10 @@ def extract_media_info(raw_url: str) -> Dict[str, Any]:
         )
 
     # --- 3. REDNOTE / XIAOHONGSHU ---
-    elif any(s in url_low for s in ("xiaohongshu.com", "xhslink.com", "rednote")):
+    elif platform_name(target_url) == "REDNOTE":
         logger.info(f"[Platform RedNote] Memproses: {target_url}")
         # Jalur 1: Fast HTML State & CDN Stream Extractor
-        info = _extract_rednote_html(target_url) or _extract_rednote_html(clean_target)
+        info = _extract_rednote_html(target_url)
         if info:
             return info
 
@@ -943,14 +744,7 @@ def extract_media_info(raw_url: str) -> Dict[str, Any]:
     elif "youtube.com" in url_low or "youtu.be" in url_low:
         logger.info(f"[Platform YouTube] Memproses: {target_url}")
         headers = {"User-Agent": DESKTOP_UA, "Referer": "https://www.youtube.com/"}
-        try:
-            return _extract_with_ytdlp(target_url, custom_headers=headers)
-        except Exception as e:
-            logger.warning(f"yt-dlp failed for YouTube: {e}. Attempting fallback...")
-            fb = _extract_youtube_fallback(target_url)
-            if fb:
-                return fb
-            raise e
+        return _extract_with_ytdlp(target_url, custom_headers=headers)
 
     # --- DEFAULT GENERIC ---
     else:

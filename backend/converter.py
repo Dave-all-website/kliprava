@@ -6,6 +6,7 @@ from typing import Dict, Any, Optional
 from config import settings
 from media_sources import select_sources
 from network import open_public_stream
+from ytdlp_options import ytdlp_options
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +23,7 @@ def safe_remove(filepath: str) -> None:
             time.sleep(0.1)
 
 
-def download_raw_media(direct_url: str, output_path: str, headers: Optional[dict] = None, original_url: Optional[str] = None, format_id: Optional[str] = None) -> str:
+def download_raw_media(direct_url: str, output_path: str, headers: Optional[dict] = None, original_url: Optional[str] = None, format_id: Optional[str] = None, backup_urls=None) -> str:
     """Mengunduh stream video/audio mentah dari CDN ke disk lokal."""
     req_headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
@@ -41,9 +42,10 @@ def download_raw_media(direct_url: str, output_path: str, headers: Optional[dict
         mob_h["User-Agent"] = mob_ua
         header_attempts.append(mob_h)
 
-    for h in header_attempts:
+    candidates = list(dict.fromkeys([direct_url, *(backup_urls or [])]))
+    for candidate, h in ((u, h) for u in candidates for h in header_attempts):
         try:
-            response, pool = open_public_stream(direct_url, h, timeout=(6, 40))
+            response, pool = open_public_stream(candidate, h, timeout=(6, 40))
             try:
                 if response.status not in (200, 206):
                     continue
@@ -71,60 +73,19 @@ def download_raw_media(direct_url: str, output_path: str, headers: Optional[dict
             fallback_targets.append(original_url)
 
         import yt_dlp
-        import random
-        cookie_path = os.path.join(os.path.dirname(__file__), "cookies.txt")
-        if not os.path.exists(cookie_path):
-            root_cookie = os.path.join(os.path.dirname(os.path.dirname(__file__)), "cookies.txt")
-            if os.path.exists(root_cookie):
-                cookie_path = root_cookie
-
         for target in fallback_targets:
-            for client_choice in (["mweb"], ["android"], ["web"], ["tv"], None):
-                try:
-                    ydl_opts = {
-                        "quiet": True,
-                        "no_warnings": True,
-                        "noplaylist": True,
-                        "outtmpl": output_path,
-                        "format": format_id,
-                        "merge_output_format": "mp4",
-                        "socket_timeout": 20,
-                        "retries": 2,
-                        "js_runtimes": {"node": {}, "deno": {}},
-                    }
-                    if client_choice:
-                        ydl_opts["extractor_args"] = {
-                            "youtube": {
-                                "player_client": client_choice
-                            }
-                        }
-
-                    # Cek environment variable YOUTUBE_COOKIES
-                    cookies_env = os.environ.get("YOUTUBE_COOKIES", "").strip()
-                    if cookies_env:
-                        temp_cookie = os.path.join(os.path.dirname(__file__), "env_cookies.txt")
-                        with open(temp_cookie, "w", encoding="utf-8") as cf:
-                            cf.write(cookies_env)
-                        ydl_opts["cookiefile"] = temp_cookie
-                    elif os.path.exists(cookie_path):
-                        ydl_opts["cookiefile"] = cookie_path
-
-                    yt_proxy = os.environ.get("YOUTUBE_PROXY", "").strip()
-                    if yt_proxy:
-                        ydl_opts["proxy"] = yt_proxy
-                    elif settings.PROXIES:
-                        ydl_opts["proxy"] = random.choice(settings.PROXIES)
-
-                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            try:
+                safe_remove(output_path)
+                with ytdlp_options(target, outtmpl=output_path, format=format_id,
+                                   nopart=True, continuedl=False) as options:
+                    with yt_dlp.YoutubeDL(options) as ydl:
                         ydl.download([target])
-                    if os.path.exists(output_path) and os.path.getsize(output_path) > 1024:
-                        download_ok = True
-                        break
-                except Exception as ydl_err:
-                    logger.warning(f"yt-dlp fallback download gagal ({client_choice}) untuk {target[:60]}: {ydl_err}")
-                    safe_remove(output_path)
-            if download_ok:
-                break
+                if os.path.exists(output_path) and os.path.getsize(output_path) > 1024:
+                    download_ok = True
+                    break
+            except Exception as exc:
+                logger.warning("yt-dlp fallback download gagal: %s", exc)
+                safe_remove(output_path)
 
     if not download_ok or not os.path.exists(output_path) or os.path.getsize(output_path) < 1024:
         safe_remove(output_path)
@@ -137,9 +98,9 @@ def download_media_sources(info, raw_path, audio_path, original_url, resolution=
     primary, audio = select_sources(info, resolution, output_format, settings.MAX_VIDEO_HEIGHT)
     try:
         fallback_format = "bestaudio/best" if output_format == "mp3" else "best"
-        download_raw_media(primary["url"], raw_path, primary["headers"], original_url, primary["format_id"] or fallback_format)
+        download_raw_media(primary["url"], raw_path, primary["headers"], original_url, primary["format_id"] or fallback_format, primary["backup_urls"])
         if audio:
-            download_raw_media(audio["url"], audio_path, audio["headers"], original_url, audio["format_id"] or "bestaudio/best")
+            download_raw_media(audio["url"], audio_path, audio["headers"], original_url, audio["format_id"] or "bestaudio/best", audio["backup_urls"])
             return audio_path
         return None
     except Exception:
@@ -216,7 +177,9 @@ def convert_media(
                 target_h = min(int(digits), target_h) if target_h else int(digits)
 
         if target_h and target_h > 0:
-            vf_filters.append(f"scale=-2:'min({target_h},ih)'")
+            vf_filters.append(f"scale=-2:'max(2,trunc(min({target_h},ih)/2)*2)'")
+        else:
+            vf_filters.append("scale='max(2,trunc(iw/2)*2)':'max(2,trunc(ih/2)*2)'")
 
         if vf_filters:
             cmd.extend(["-vf", ",".join(vf_filters)])

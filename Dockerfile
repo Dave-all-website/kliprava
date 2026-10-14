@@ -1,9 +1,12 @@
 # Backend Kliprava — Docker deployment for Render, Railway, or a VPS
-FROM python:3.12-slim
+FROM node:24-bookworm-slim AS js-runtime
+FROM python:3.12-slim-bookworm
+
+COPY --from=js-runtime /usr/local/bin/node /usr/local/bin/node
 
 # Install ffmpeg & nodejs (wajib untuk JS challenge solver yt-dlp)
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ffmpeg nodejs curl \
+    && apt-get install -y --no-install-recommends ffmpeg curl \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

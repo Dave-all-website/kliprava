@@ -627,25 +627,14 @@ def extract_media_info(raw_url: str) -> Dict[str, Any]:
         info = _extract_douyin_share_page(video_id, share_url)
         if info:
             return info
-        canonical_url = f"https://www.douyin.com/video/{video_id}"
-        info = fetch_tikwm_info(canonical_url)
-        if info:
-            return info
+        from douyin_browser import extract_browser_video
         try:
-            return _extract_with_ytdlp(canonical_url, custom_headers={"User-Agent": DESKTOP_UA, "Referer": "https://www.douyin.com/"})
+            info = extract_browser_video(video_id, DESKTOP_UA)
+            info["qualities"] = _quality_ladder(info["_formats"])
+            return info
         except Exception as exc:
-            logger.warning("Douyin extraction failed for %s: %s", video_id, exc)
-            message = str(exc).lower()
-            if "fresh cookies" in message or "403" in message or "forbidden" in message:
-                raise ValueError(
-                    "Douyin menolak akses dari server dan meminta cookie sesi yang masih berlaku. "
-                    "Link sudah dikenali. Administrator perlu mengatur DOUYIN_COOKIES di Railway; "
-                    "jika koneksi server tetap ditolak, periksa DOUYIN_PROXY."
-                ) from exc
-            raise ValueError(
-                "Data video Douyin belum dapat diambil. Pastikan postingan masih tersedia dan dapat dibuka di Douyin. "
-                "Detail kegagalan telah dicatat di log server."
-            ) from exc
+            logger.warning("Anonymous Douyin browser failed for %s: %s", video_id, exc)
+            raise ValueError(str(exc)) from exc
 
     # --- 3. REDNOTE / XIAOHONGSHU ---
     elif platform_name(target_url) == "REDNOTE":

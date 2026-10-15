@@ -33,22 +33,23 @@ Tes mencakup tautan pendek, URL CDN dari respons TikTok, identitas dan durasi
 RedNote, CDN cadangan, isolasi cookie, serta konversi video berdimensi ganjil.
 Tes jaringan langsung tetap diperlukan karena akses platform dapat berubah.
 
-## Douyin
+## Douyin tanpa impor cookie login
 
-Backend mempertahankan parameter tautan berbagi dan mencari video dengan ID yang
-sesuai di `loaderData.videoInfoRes.item_list` maupun struktur bersarang lainnya.
-URL media yang diberikan Douyin dipakai apa adanya, termasuk URL cadangannya.
+Setelah memeriksa halaman berbagi, backend membuka halaman desktop Douyin dengan
+Chromium dalam sesi sementara yang baru. Backend membaca respons detail video
+hanya jika ID-nya cocok dengan tautan yang diminta, lalu mengunduh URL MP4 yang
+memuat video dan audio. Format DASH terpisah tidak dipakai sebagai MP4 gabungan.
 
-Jika halaman berbagi tidak memuat video dan API melaporkan `Fresh cookies` atau
-HTTP 403, link telah dikenali tetapi sesi/koneksi server belum diterima Douyin.
-Ini tidak cukup untuk menyimpulkan pembatasan wilayah atau postingan telah dihapus.
-Backend tidak lagi mengulangi panggilan API yang sama lewat dua bentuk URL.
+Jalur Douyin tidak membaca `DOUYIN_COOKIES`, file cookie, atau profil browser
+pribadi. Tidak perlu menambahkan cookie login di Railway. Situs dapat membuat
+cookie sesi anonim selama halaman dibuka; sesi tersebut dibuang saat browser
+ditutup dan tidak diekspor ke pengguna. Tidak ada login otomatis atau penyelesaian
+CAPTCHA. Jika Douyin tidak menyediakan video untuk browser anonim, backend
+melaporkan kegagalan tersebut tanpa menyarankan unggah cookie.
 
-Administrator dapat menambahkan `DOUYIN_COOKIES` berformat Netscape atau Base64
-di Variables layanan Railway, kemudian melakukan redeploy. Cookie hanya perlu
-dipasang melalui pengaturan rahasia layanan, bukan dikirim di chat atau Git.
-Variabel tersebut dipakai oleh jalur yt-dlp, termasuk fallback unduhan.
-`DOUYIN_PROXY` tersedia jika diperlukan untuk koneksi keluar yang diizinkan.
-Cookie/proxy tidak menjamin semua postingan dapat diakses; uji kembali link yang
-sama setelah konfigurasi. Halaman yang hanya dapat ditonton lewat aplikasi
-Douyin mungkin tetap tidak menyediakan video untuk backend web.
+Docker sudah memasang Chromium. Untuk lokal, jalankan
+`python -m playwright install chromium` dari lingkungan backend. Pada Windows,
+Microsoft Edge digunakan sebagai cadangan jika Chromium tidak tersedia.
+Satu proses browser diizinkan sekaligus untuk membatasi pemakaian memori server.
+Akses tetap bergantung pada ketersediaan video dan respons Douyin terhadap
+koneksi server; berhasil di lokal belum membuktikan berhasil di Railway.

@@ -6,7 +6,7 @@ from typing import Dict, Any, Optional
 from config import settings
 from media_sources import select_sources
 from network import open_public_stream
-from ytdlp_options import ytdlp_options
+from ytdlp_options import platform_name, ytdlp_options
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +69,7 @@ def download_raw_media(direct_url: str, output_path: str, headers: Optional[dict
 
     if not download_ok:
         fallback_targets = []
-        if original_url and format_id:
+        if original_url and format_id and platform_name(original_url) != "DOUYIN":
             fallback_targets.append(original_url)
 
         import yt_dlp

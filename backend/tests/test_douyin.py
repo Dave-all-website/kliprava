@@ -8,6 +8,8 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import scraper
 from douyin import parse_share_video
+from douyin import parse_video_data
+import douyin_browser
 
 VIDEO_ID = "7675505205047348543"
 SHARE_URL = f"https://www.iesdouyin.com/share/video/{VIDEO_ID}/?share_sign=test&from_ssr=1"
@@ -22,7 +24,6 @@ def test_nested_share_video_identity_urls_and_subsecond_duration():
     item = {"aweme_id": VIDEO_ID, "desc": "requested", "video": {
         "duration": 700, "width": 720, "height": 1280,
         "play_addr": {"url_list": ["https://cdn.example/playwm?v=1", "https://cdn.example/backup?v=1"]},
-        "bit_rate": [{"play_addr": {"url_list": ["https://cdn.example/low"], "height": 640}}],
     }}
     wrong = {"aweme_id": "123", "desc": "recommendation", "video": {"play_addr": {"url_list": ["https://cdn.example/wrong"]}}}
     info = parse_share_video(state_html([wrong, item]), VIDEO_ID, SHARE_URL, {})
@@ -31,7 +32,7 @@ def test_nested_share_video_identity_urls_and_subsecond_duration():
     assert info["canonical_url"] == SHARE_URL
     assert info["direct_url"] == "https://cdn.example/playwm?v=1"
     assert info["_formats"][0]["backup_urls"] == ["https://cdn.example/backup?v=1"]
-    assert info["_formats"][1]["height"] == 640
+    assert info["_formats"][0]["height"] == 1280
 
 
 @pytest.mark.parametrize("html", ["<html>verification</html>", "window._ROUTER_DATA = invalid", "window._ROUTER_DATA = []", state_html([])])
@@ -52,20 +53,47 @@ def test_share_request_preserves_parameters_and_closes_connections(monkeypatch):
     pool.close.assert_called_once()
 
 
-def test_dispatch_uses_share_then_one_api_attempt_and_reports_cookies(monkeypatch):
+def test_dispatch_uses_anonymous_browser_and_never_cookie_extractor(monkeypatch):
     monkeypatch.setattr(scraper, "validate_media_page", lambda url: url)
     monkeypatch.setattr(scraper, "resolve_canonical_url", lambda url: SHARE_URL)
     share = Mock(return_value=None)
-    tikwm = Mock(return_value=None)
-    ytdlp = Mock(side_effect=Exception("Fresh cookies (not necessarily logged in) are needed"))
+    browser = Mock(return_value={"direct_url": "https://cdn.example/video.mp4", "_formats": []})
+    ytdlp = Mock(side_effect=AssertionError("Cookie-based extractor must not run"))
     monkeypatch.setattr(scraper, "_extract_douyin_share_page", share)
-    monkeypatch.setattr(scraper, "fetch_tikwm_info", tikwm)
+    monkeypatch.setattr(douyin_browser, "extract_browser_video", browser)
     monkeypatch.setattr(scraper, "_extract_with_ytdlp", ytdlp)
-    with pytest.raises(ValueError, match="DOUYIN_COOKIES") as error:
-        scraper.extract_media_info("https://v.douyin.com/Q4d8B5M0l2I/")
+    monkeypatch.setenv("DOUYIN_COOKIES", "must not be loaded")
+    info = scraper.extract_media_info("https://v.douyin.com/Q4d8B5M0l2I/")
     share.assert_called_once_with(VIDEO_ID, SHARE_URL)
-    assert tikwm.call_count == ytdlp.call_count == 1
-    assert "wilayah" not in str(error.value)
+    browser.assert_called_once_with(VIDEO_ID, scraper.DESKTOP_UA)
+    ytdlp.assert_not_called()
+    assert info["direct_url"] == "https://cdn.example/video.mp4"
+
+
+def test_browser_detail_selects_complete_mp4_not_silent_dash():
+    detail = {"aweme_detail": {"aweme_id": VIDEO_ID, "video": {"duration": 1501823, "bit_rate": [
+        {"format": "dash", "play_addr": {"url_list": ["https://cdn.example/silent"]}},
+        {"format": "mp4", "is_h265": 1, "bit_rate": 200000, "play_addr": {"url_list": ["https://cdn.example/hevc"], "height": 540}},
+        {"format": "mp4", "is_h265": 0, "play_addr": {"url_list": ["https://cdn.example/avc"], "height": 1080}},
+    ]}}}
+    info = parse_video_data(detail, VIDEO_ID, SHARE_URL, {})
+    assert info["duration"] == 1501.823
+    assert info["direct_url"] == "https://cdn.example/avc"
+    assert len(info["_formats"]) == 2
+    assert info["_formats"][0]["vcodec"] == "h265"
+    assert parse_video_data(detail, "123", SHARE_URL, {}) is None
+
+
+def test_douyin_download_failure_never_imports_login_cookies(monkeypatch, tmp_path):
+    import converter
+    import yt_dlp
+    response = Mock(status=403)
+    monkeypatch.setattr(converter, "open_public_stream", Mock(return_value=(response, Mock())))
+    factory = Mock(side_effect=AssertionError("Cookie-based download must not run"))
+    monkeypatch.setattr(yt_dlp, "YoutubeDL", factory)
+    with pytest.raises(Exception, match="Gagal mengunduh"):
+        converter.download_raw_media("https://cdn.example/video", str(tmp_path / "raw.mp4"), original_url=SHARE_URL, format_id="best")
+    factory.assert_not_called()
 
 
 def test_unresolved_share_link_is_not_reported_as_geo_restriction(monkeypatch):

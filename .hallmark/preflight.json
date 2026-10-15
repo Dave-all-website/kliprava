@@ -1,0 +1,11 @@
+{
+  "date": "2026-10-15",
+  "scope": "single-page converter, frontend/src/App.jsx",
+  "framework": "React 19 / Vite 6 / Tailwind 3",
+  "fonts": {"display": "Outfit", "body": "Plus Jakarta Sans", "existingOutlier": "JetBrains Mono"},
+  "priorPalette": "Slate surfaces with pink, purple and cyan gradients",
+  "motion": "CSS only, no motion library",
+  "spacing": "Tailwind spacing utilities",
+  "preserve": ["brand and font pairing", "conversion API and download flow", "existing page anchors", "advertising components", "legal documents"],
+  "introduce": ["portable theme tokens", "light and dark theme parity", "functional Workbench layout", "keyboard focus and native modal"]
+}

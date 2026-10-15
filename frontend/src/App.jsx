@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
+import './studio.css';
 import { backendUrl, checkBackend, processPayload } from './mediaClient';
 import {
   Search, Download, Loader2, AlertCircle, CheckCircle,
@@ -52,21 +53,7 @@ const initialTheme = () => {
     const saved = localStorage.getItem('cuplik-theme');
     if (saved === 'dark' || saved === 'light') return saved;
   } catch (_) {}
-  return 'dark'; // Studio Pro Dark default
-};
-
-const fmtEstRemaining = (ms, clipLen = 10) => {
-  const totalEstSec = Math.max(3, Math.min(18, Math.ceil(clipLen * 0.2)));
-  const elapsedSec = Math.floor(ms / 1000);
-  const remSec = totalEstSec - elapsedSec;
-  if (remSec <= 0) {
-    return 'Hampir Selesai…';
-  }
-  if (remSec >= 60) {
-    const mins = Math.ceil(remSec / 60);
-    return `~${mins} Menit`;
-  }
-  return `~${remSec} Detik`;
+  return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 };
 
 const fmtElapsed = (ms) => {
@@ -209,38 +196,12 @@ const STEPS = [
 ];
 
 const FAQS = [
-  {
-    q: 'Apakah Kliprava benar-benar gratis digunakan?',
-    a: 'Ya, Kliprava 100% gratis tanpa batasan kuota harian, tanpa biaya langganan tersembunyi, dan tanpa perlu registrasi akun atau login. Anda dapat mengunduh dan memotong video sepuasnya.'
-  },
-  {
-    q: 'Apakah video TikTok yang diunduh bebas dari watermark?',
-    a: 'Ya. Kliprava secara otomatis mengekstrak berkas sumber murni tanpa logo tanda air (watermark) dari TikTok maupun Douyin, menghasilkan kualitas video yang jernih dan profesional.'
-  },
-  {
-    q: 'Bagaimana cara memotong bagian tertentu dari video sebelum mengunduh?',
-    a: 'Setelah video berhasil dimuat dan masuk ke mode pratinjau, Anda dapat menggeser pin slider "Mulai" (merah) dan "Selesai" (biru) pada timeline. Anda juga dapat menekan tombol stepper presisi (-1s, -0.1s, +0.1s, +1s) untuk mengatur titik potong per milidetik.'
-  },
-  {
-    q: 'Apakah saya bisa mengunduh hanya suara atau musiknya saja dalam format MP3?',
-    a: 'Tentu bisa! Pada panel pilihan format keluaran, pilih tab "MP3 Audio". Kliprava akan mengekstrak suara berkualitas studio hingga 320kbps tanpa mengunduh visual video, sangat cocok untuk sound tren atau podcast.'
-  },
-  {
-    q: 'Platform sosial media apa saja yang didukung oleh Kliprava?',
-    a: 'Kliprava mendukung 7 platform terpopuler: YouTube (video & Shorts), TikTok, Instagram (Reels & Feed), Douyin (抖音), Facebook Video, X (Twitter), dan Rednote (Xiaohongshu).'
-  },
-  {
-    q: 'Apakah Kliprava menyimpan berkas video atau data pribadi saya di server?',
-    a: 'Tidak sama sekali. Kami menerapkan prinsip privasi ketat (Zero-Logs). Seluruh pemrosesan media bersifat sementara (ephemeral) di server cloud kami dan otomatis terhapus segera setelah proses streaming atau unduhan selesai.'
-  },
-  {
-    q: 'Mengapa terkadang tautan video YouTube tertentu gagal diproses?',
-    a: 'Beberapa video YouTube mungkin memiliki batasan usia (18+), bersifat privat, atau dilindungi kebijakan verifikasi bot YouTube. Jika terjadi kendala, silakan gunakan tautan video lain atau nikmati platform seperti TikTok dan Instagram yang memiliki rasio keberhasilan 99%.'
-  },
-  {
-    q: 'Apakah Kliprava bisa digunakan di smartphone (Android & iPhone)?',
-    a: 'Ya! Tampilan Kliprava sepenuhnya responsif dan dioptimalkan untuk layar sentuh di HP Android, iPhone, iPad, tablet, maupun laptop/PC pada semua peramban seperti Google Chrome, Safari, dan Firefox.'
-  }
+  {q: 'Perlu akun atau aplikasi?', a: 'Tidak. Kamu bisa menempel tautan dan mengunduh hasilnya langsung melalui browser tanpa membuat akun Kliprava.'},
+  {q: 'Bagaimana cara memotong?', a: 'Setelah video dimuat, geser titik mulai dan selesai pada timeline atau gunakan tombol pengaturan waktu. Pilih format, lalu klik Unduh.'},
+  {q: 'Bisa unduh audio saja?', a: 'Bisa. Pilih MP3 Audio pada pengaturan keluaran. Kliprava akan mengonversi suara dari bagian yang kamu pilih.'},
+  {q: 'Kenapa tautan gagal?', a: 'Pastikan tautannya lengkap dan videonya publik. Video privat, pembatasan wilayah, atau verifikasi dari platform asal dapat membuat video tidak tersedia. Coba tautan lain atau ulangi beberapa saat lagi.'},
+  {q: 'Hasilnya tanpa watermark?', a: 'Jika platform menyediakan sumber tanpa watermark, Kliprava akan menggunakan sumber tersebut. Watermark yang menyatu dengan gambar video tidak dihapus.'},
+  {q: 'Bisa dipakai di HP?', a: 'Bisa. Gunakan browser di Android, iPhone, tablet, atau laptop. Hasil unduhan tersimpan sesuai pengaturan browser dan perangkatmu.'},
 ];
 
 const LEGAL_DOCS = {
@@ -323,6 +284,7 @@ export default function App() {
   const [backendPing, setBackendPing] = useState({ online: null, latency: null });
   const [openFaq, setOpenFaq] = useState(0);
   const [activeModal, setActiveModal] = useState(null);
+  const [activeSection, setActiveSection] = useState('converter');
 
   const [video, setVideo] = useState({ title: '', thumbnail: '', streamUrl: '', audioUrl: '', duration: 0, qualities: [], canonicalUrl: '' });
   const [start, setStart] = useState(0);
@@ -353,6 +315,18 @@ export default function App() {
   }, []);
 
   useEffect(() => () => infoRequestRef.current?.abort(), []);
+
+  useEffect(() => {
+    const updateSection = () => {
+      const sections = ['converter', 'platforms', 'how-it-works', 'faq'];
+      const current = sections.filter(id => (document.getElementById(id)?.getBoundingClientRect().top ?? Infinity) <= 160).pop();
+      setActiveSection(current || 'converter');
+    };
+    updateSection();
+    window.addEventListener('scroll', updateSection, { passive: true });
+    window.addEventListener('resize', updateSection);
+    return () => { window.removeEventListener('scroll', updateSection); window.removeEventListener('resize', updateSection); };
+  }, []);
 
   // Timer live pemrosesan unduhan
   useEffect(() => {
@@ -393,8 +367,8 @@ export default function App() {
   const busy = state === 'processing' || state === 'downloading';
 
   const resOptions = useMemo(() => {
-    const opts = [{ label: '✨ Kualitas Asli Tertinggi (Source Best)', value: 'best' }];
-    (video.qualities || []).forEach((q) => opts.push({ label: `🎬 ${q.label}`, value: String(q.height) }));
+    const opts = [{ label: 'Kualitas asli (terbaik)', value: 'best' }];
+    (video.qualities || []).forEach((q) => opts.push({ label: `${q.label}`, value: String(q.height) }));
     return opts;
   }, [video.qualities]);
 
@@ -477,27 +451,23 @@ export default function App() {
   const markStart = () => {
     const v = Math.max(0, Math.min(Number(now.toFixed(2)), end - 0.2));
     setStart(v);
-    setToast(`📍 Titik mulai diatur ke ${fmtPrecise(v)}`);
   };
 
   const markEnd = () => {
     const v = Math.min(video.duration, Math.max(Number(now.toFixed(2)), start + 0.2));
     setEnd(v);
-    setToast(`🏁 Titik selesai diatur ke ${fmtPrecise(v)}`);
   };
 
   const setPreset = (sec) => {
     if (!video.duration) return;
     const targetEnd = Math.min(video.duration, start + sec);
     setEnd(Number(targetEnd.toFixed(2)));
-    setToast(`⏱️ Preset durasi ${sec}s diterapkan!`);
   };
 
   const resetTrim = () => {
     setStart(0);
     setEnd(video.duration);
     seek(0);
-    setToast('🔄 Rentang potong direset ke durasi penuh.');
   };
 
   const handlePaste = async () => {
@@ -506,7 +476,7 @@ export default function App() {
         const text = await navigator.clipboard.readText();
         if (text) {
           setUrl(text.trim());
-          setToast('✨ Tautan berhasil ditempel dari clipboard!');
+          setToast('Tautan ditempel. Klik Ambil video untuk melanjutkan.');
         }
       }
     } catch (_) {
@@ -626,7 +596,7 @@ export default function App() {
       document.body.appendChild(a); a.click(); a.remove();
       URL.revokeObjectURL(href);
       setState('preview'); setProg(null);
-      setToast(`✨ Berhasil diunduh dalam ${fmtElapsed(Date.now() - downloadStartedRef.current)}!`);
+      setToast('File siap. Periksa unduhan browser.');
     } catch (e) {
       setError(mapNetErr(e)); setState('error'); setProg(null);
     } finally {
@@ -638,18 +608,8 @@ export default function App() {
   const pct = (t) => (video.duration ? (t / video.duration) * 100 : 0);
   const progPct = prog && prog.total ? Math.round((prog.loaded / prog.total) * 100) : null;
 
-  const displayPct = useMemo(() => {
-    if (state === 'processing') {
-      return Math.min(88, Math.floor((elapsedMs / 2200) * 88));
-    }
-    if (state === 'downloading') {
-      if (progPct !== null) {
-        return Math.max(88, Math.min(100, Math.floor(88 + (progPct * 0.12))));
-      }
-      return 96;
-    }
-    return 0;
-  }, [state, elapsedMs, progPct]);
+  const displayPct = state === 'downloading' && progPct !== null
+    ? Math.max(0, Math.min(100, progPct)) : null;
 
   // Estimasi ukuran file
   const estSizeMb = useMemo(() => {
@@ -663,190 +623,100 @@ export default function App() {
   }, [clipLen, format]);
 
   return (
-    <div translate="no" className="notranslate relative min-h-screen anime-modern-bg selection:bg-rose-500 selection:text-white pb-28">
-      {/* Studio Pro Glowing Ambient Mesh */}
-      <div className="anime-hero-orb" aria-hidden="true" />
+    <div translate="no" className="notranslate studio-app">
+      <a className="skip-link" href="#converter">Langsung ke alat konversi</a>
+      <aside className="studio-sidebar" aria-label="Navigasi studio">
+        <a className="studio-brand" href="#" aria-label="Kliprava, beranda">
+          <span className="brand-mark"><Scissors size={22} /></span>
+          <span>Kliprava<span className="brand-period">.</span></span>
+        </a>
+        <nav className="studio-nav" aria-label="Menu utama">
+          {[
+            ['converter', 'Studio', Sliders], ['platforms', 'Platform', Layers],
+            ['how-it-works', 'Cara pakai', Play], ['faq', 'Bantuan', HelpCircle],
+          ].map(([id, label, Icon]) => <a key={id} href={`#${id}`} className={activeSection === id ? 'studio-nav-primary' : ''}
+            aria-current={activeSection === id ? 'location' : undefined} onClick={() => setActiveSection(id)}><Icon size={19} /><span>{label}</span></a>)}
+        </nav>
+        <div className="sidebar-note"><Scissors size={26} strokeWidth={1.4} /><p>Momen bagus<br />layak disimpan.</p><span>Video & audio, versi kamu.</span></div>
+        <div className="sidebar-bottom"><span className="sidebar-dot" /> Ruang kreatifmu</div>
+      </aside>
 
-      {/* Header Studio Pro 3.5 */}
-      <header className="relative z-20 max-w-6xl mx-auto px-4 sm:px-6 pt-5 sm:pt-7 flex items-center justify-between gap-2">
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="relative flex items-center justify-center w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-[#080B14]/90 p-1.5 shadow-xl shadow-rose-500/25 border border-white/20 hover:scale-105 hover:border-cyan-400/50 transition-all cursor-pointer shrink-0 overflow-hidden group">
-            <img src="/logo-app.png" alt="Kliprava Logo" className="w-full h-full object-contain rounded-xl drop-shadow-md group-hover:scale-110 transition-transform duration-300" />
-            <Sparkles size={13} className="absolute -top-1 -right-1 text-cyan-300 animate-pulse pointer-events-none" />
-          </div>
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <span className="font-display text-xl sm:text-2xl font-black tracking-tight bg-gradient-to-r from-rose-500 via-purple-400 to-cyan-400 bg-clip-text text-transparent">
-                Kliprava<span className="text-rose-500">.</span>
-              </span>
-              <span className="inline-flex px-2 py-0.5 text-[9px] sm:text-[10px] font-mono font-bold uppercase rounded-md bg-rose-500/15 text-rose-500 dark:text-rose-400 border border-rose-500/25 tracking-wider">
-                STUDIO 3.5
-              </span>
-            </div>
-            <p className="text-[10px] sm:text-[11px] font-mono text-slate-500 dark:text-slate-400 tracking-wider truncate">
-              Frame-Accurate Video Trimmer & Studio
-            </p>
-          </div>
-        </div>
-
-        {/* Status Pill & Theme Switcher */}
-        <div className="flex items-center gap-2 shrink-0">
-          <div className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl glass-studio-card text-[11px] font-mono text-slate-600 dark:text-slate-300 shadow-sm">
-            <BackendStatus status={backendPing} />
-          </div>
-
-          <button
-            onClick={() => setTheme(dark ? 'light' : 'dark')}
-            aria-label="Ganti tema tampilan"
-            className="p-2 sm:p-2.5 px-3 sm:px-3.5 rounded-xl glass-studio-card text-slate-700 dark:text-slate-200 hover:scale-105 active:scale-95 transition-all flex items-center gap-1.5 text-xs font-semibold shadow-sm shrink-0 cursor-pointer"
-          >
-            {dark ? (
-              <>
-                <Sun size={15} className="text-amber-400 animate-spin-slow" />
-                <span className="hidden md:inline font-mono">Light</span>
-              </>
-            ) : (
-              <>
-                <Moon size={15} className="text-purple-600" />
-                <span className="hidden md:inline font-mono">Dark</span>
-              </>
-            )}
+      <header className="studio-header page-width">
+        <div className="workspace-path"><span>Ruang kerja</span><ChevronDown size={13} /><strong>Studio kreator</strong></div>
+        <a className="studio-brand mobile-brand" href="#" aria-label="Kliprava, beranda"><span className="brand-mark"><Scissors size={20} /></span><span>Kliprava.</span></a>
+        <div className="header-actions">
+          <button className="theme-switch" onClick={() => setTheme(dark ? 'light' : 'dark')}
+            aria-label={dark ? 'Aktifkan mode terang' : 'Aktifkan mode gelap'} aria-pressed={dark}>
+            {dark ? <Sun size={18} /> : <Moon size={18} />}
+            <span>{dark ? 'Mode terang' : 'Mode gelap'}</span>
           </button>
         </div>
       </header>
 
-      {/* Main Content Area */}
-      <main className="relative z-10 max-w-6xl mx-auto px-3.5 sm:px-6 pt-5 sm:pt-8">
-        
-        {/* Hero Section */}
-        <section className="text-center max-w-3xl mx-auto pb-4 sm:pb-6">
-          <div className="inline-flex items-center gap-1.5 sm:gap-2 px-3 py-1 rounded-full bg-rose-500/10 border border-rose-500/25 text-rose-600 dark:text-rose-400 text-[11px] sm:text-xs font-mono mb-3 sm:mb-4 shadow-sm backdrop-blur-md">
-            <Zap size={13} className="text-amber-400 shrink-0" /> 7 Platform Studio Edition · Multi-Format & Trimmer
-          </div>
-
-          <h1 className="font-display text-2xl sm:text-4xl md:text-5xl font-black tracking-tight leading-[1.2] px-1">
-            Potong & Unduh Video Sosmed{' '}
-            <span className="bg-gradient-to-r from-rose-500 via-purple-500 to-cyan-400 bg-clip-text text-transparent">
-              Ultra Presisi
-            </span>
-          </h1>
-          <p className="mt-2.5 sm:mt-3 text-slate-600 dark:text-slate-300 text-xs sm:text-sm md:text-base max-w-xl mx-auto leading-relaxed px-2">
-            Ekstraksi video instan tanpa watermark untuk YouTube, TikTok, Douyin, Instagram, Rednote, Facebook, & X.
-          </p>
-
-          {/* Smart Glowing Hero Input Bar */}
-          <div className="mt-6 sm:mt-8 relative max-w-2xl mx-auto">
-            <div className={`relative flex items-center glass-studio-card rounded-2xl p-1 sm:p-1.5 border transition-all duration-300 shadow-2xl ${active ? active.glowClass : 'border-rose-500/30 focus-within:border-rose-500 focus-within:ring-4 focus-within:ring-rose-500/15'}`}>
-              
-              {/* Platform Icon Badge Inside Input */}
-              <div className="pl-3 pr-2 shrink-0 flex items-center gap-1.5">
-                {active ? (
-                  <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-black/20 border border-white/10">
-                    <img src={active.logo} className="w-5 h-5 rounded-md object-cover shadow-sm animate-pulse" alt={active.name} />
-                    <span className="hidden xs:inline text-[11px] font-mono font-bold" style={{ color: active.color }}>
-                      {active.name}
-                    </span>
-                  </div>
-                ) : (
-                  <Search size={18} className="text-slate-400 dark:text-slate-500 ml-1" />
-                )}
-              </div>
-
-              <input
-                value={url}
-                disabled={busy}
-                onChange={(e) => {
-                  infoRequestRef.current?.abort();
-                  infoRequestRef.current = null;
-                  setUrl(e.target.value); setState('idle'); setError('');
-                }}
-                onKeyDown={(e) => e.key === 'Enter' && fetchInfo()}
-                placeholder="Tempel tautan video (YouTube, TikTok, IG, Douyin, FB, X, Rednote...)"
-                className="w-full py-2.5 sm:py-3.5 px-1 sm:px-2 text-xs sm:text-sm font-medium bg-transparent text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 outline-none min-w-0 font-mono"
-              />
-
-              {/* Quick Actions (Clear / Paste / Fetch) */}
-              <div className="flex items-center gap-1 sm:gap-1.5 pr-1 shrink-0">
-                {url ? (
-                  <button
-                    disabled={busy}
-                    onClick={() => { infoRequestRef.current?.abort(); infoRequestRef.current = null; setUrl(''); setState('idle'); }}
-                    className="p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-200/50 dark:hover:bg-slate-800/50 transition-colors cursor-pointer"
-                    title="Hapus tautan"
-                  >
-                    <X size={15} />
-                  </button>
-                ) : (
-                  <button
-                    onClick={handlePaste}
-                    className="hidden sm:flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-mono font-medium text-slate-500 dark:text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-800/50 transition cursor-pointer"
-                    title="Tempel dari Clipboard"
-                  >
-                    <Clipboard size={13} /> Tempel
-                  </button>
-                )}
-
-                <button
-                  onClick={fetchInfo}
-                  disabled={busy || state === 'parsing' || !url.trim()}
-                  className="btn-studio-gradient px-4 sm:px-5 py-2.5 sm:py-3 rounded-xl font-display font-bold text-xs sm:text-sm text-white shadow-lg shadow-rose-500/25 transition-all disabled:opacity-40 flex items-center gap-1.5 active:scale-95 shrink-0 cursor-pointer"
-                >
-                  {state === 'parsing' ? (
-                    <>
-                      <Loader2 className="animate-spin text-white" size={15} />
-                      <span className="font-mono text-[11px] sm:text-xs">Memproses</span>
-                    </>
-                  ) : (
-                    <>
-                      <span>Ambil Video</span>
-                      <Play size={13} className="fill-current" />
-                    </>
-                  )}
-                </button>
-              </div>
-            </div>
-
-            {/* 7 Platform Badges with Japanese Subtitles */}
-            <div className="mt-3.5 sm:mt-4 flex flex-wrap justify-center gap-1.5 sm:gap-2 px-1">
-              {PLATFORMS.map((p) => {
-                const on = active?.key === p.key;
-                return (
-                  <button
-                    key={p.key}
-                    onClick={() => {
-                      if (!url) {
-                        setToast(`Tempelkan tautan video dari ${p.name}`);
-                      }
-                    }}
-                    className={`inline-flex items-center gap-1 sm:gap-1.5 text-[10px] sm:text-xs font-semibold px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl border backdrop-blur-md transition-all duration-200 cursor-pointer ${
-                      on
-                        ? `${p.badgeClass} ring-2 ring-rose-500/60 scale-105 shadow-md`
-                        : 'bg-white/60 dark:bg-slate-900/60 border-slate-200/70 dark:border-white/10 text-slate-600 dark:text-slate-400 hover:border-rose-400/40 hover:scale-102'
-                    }`}
-                  >
-                    <img src={p.logo} className="w-3.5 h-3.5 rounded-sm object-cover" alt={p.name} />
-                    <span>{p.name}</span>
-                    <span className="hidden xs:inline text-[9px] opacity-60 font-mono">({p.jpName})</span>
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Top Responsive Ad Placement */}
-            <div className="mt-6">
-              <div className="hidden md:block">
-                <AdBanner728 />
-              </div>
-              <div className="block md:hidden">
-                <AdBanner300 />
-              </div>
-            </div>
+      <main className="page-width studio-main">
+        <section className="studio-intro" aria-labelledby="page-title">
+          <h1 id="page-title">Momenmu. <span>Versimu.</span></h1>
+          <div className="intro-note">
+            <p>Potong video atau ambil audionya. Mulai dari satu tautan.</p>
           </div>
         </section>
 
+        <div className="studio-launch">
+        <section id="converter" className="converter-panel" aria-label="Alat konversi video">
+          <div className="converter-toolbar">
+            <span className="tool-name"><span className="tool-dot" /> Buat klip baru</span>
+            <ol className="workflow-steps" aria-label="Tahapan konversi">
+              <li className={state === 'idle' || state === 'parsing' || state === 'error' ? 'current' : 'complete'}><span>1</span> Tautan</li>
+              <li className={state === 'preview' ? 'current' : ''}><span>2</span> Potong</li>
+              <li className={busy ? 'current' : ''}><span>3</span> Unduh</li>
+            </ol>
+          </div>
+          <div className="converter-body">
+            <div className="source-form">
+              <h2>Tempel. Potong. Simpan.</h2>
+              <p>Videonya dari mana? Masukkan tautannya di bawah.</p>
+              <label htmlFor="video-url">Tautan video</label>
+              <div className={`url-field ${state === 'error' ? 'has-error' : ''}`}>
+                {active ? <img src={active.logo} alt="" width="20" height="20" /> : <Globe size={20} />}
+                <input id="video-url" type="text" inputMode="url" autoComplete="off" spellCheck="false"
+                  value={url} disabled={busy} aria-invalid={state === 'error'} aria-describedby={state === 'error' ? 'conversion-error' : 'url-help'}
+                  onChange={(e) => { infoRequestRef.current?.abort(); infoRequestRef.current = null; setUrl(e.target.value); setState('idle'); setError(''); }}
+                  onKeyDown={(e) => e.key === 'Enter' && fetchInfo()} placeholder="Tempel tautan video di sini…" />
+                {url && <button className="icon-button" disabled={busy} aria-label="Hapus tautan"
+                  onClick={() => { infoRequestRef.current?.abort(); infoRequestRef.current = null; setUrl(''); setState('idle'); setError(''); }}><X size={17} /></button>}
+              </div>
+              <div className="source-actions">
+                <button className="primary-button" onClick={fetchInfo} disabled={busy || state === 'parsing' || !url.trim()}>
+                  {state === 'parsing' ? <><Loader2 size={18} className="animate-spin" /> Mengambil video…</> : <>Ambil video <ArrowRight size={18} /></>}
+                </button>
+                <button className="secondary-button" onClick={handlePaste} disabled={busy || state === 'parsing'}><Clipboard size={17} /> Tempel tautan</button>
+              </div>
+              <p className="url-help" id="url-help" role="status">{state === 'parsing' ? 'Sedang membaca video. Beberapa platform memerlukan waktu lebih lama.' : active ? `Tautan ${active.name} terdeteksi. Siap diambil.` : 'Video publik saja. Pilihan format tersedia setelah video dimuat.'}</p>
+            </div>
+          </div>
+          <div className="platform-rail">
+            <span className="platform-caption">Platform yang didukung</span>
+            <div className="platform-options">{PLATFORMS.map(p => (
+              <button key={p.key} className={`platform-option ${active?.key === p.key ? 'is-detected' : ''}`}
+                aria-label={`Gunakan tautan ${p.name}`} disabled={busy}
+                onClick={() => { document.getElementById('video-url')?.focus(); setToast(`Tempel tautan ${p.name} pada kolom video.`); }}>
+                <span>{p.key === 'x' ? 'X / Twitter' : p.name}</span>
+              </button>
+            ))}</div>
+          </div>
+        </section>
+        <aside className="media-feature" aria-label="Video dan audio sesuai pilihanmu">
+          <div className="media-feature-heading"><span>Lebih sedikit durasi.<br />Lebih banyak cerita.</span><ArrowRight size={23} /></div>
+          <MediaArtwork />
+          <div className="media-feature-bottom"><p>Ambil bagian terbaiknya.</p><div><span><Film size={15} /> MP4</span><span><Music size={15} /> MP3</span></div></div>
+        </aside>
+        </div>
+
+        <div className="studio-assurances"><span><Check size={15} /> Tanpa akun</span><span><Monitor size={15} /> Langsung di browser</span><span><Scissors size={15} /> Potong sesuai pilihanmu</span></div>
+
         {/* Error Alert Box */}
         {state === 'error' && (
-          <div className="anim-fade-up max-w-2xl mx-auto mb-6 sm:mb-8 flex items-start gap-3 rounded-2xl border border-rose-500/40 bg-rose-500/10 p-4 sm:p-5 text-xs sm:text-sm text-rose-700 dark:text-rose-300 backdrop-blur-xl shadow-lg">
+          <div id="conversion-error" role="alert" className="conversion-error">
             <AlertCircle size={20} className="shrink-0 mt-0.5 text-rose-500" />
             <div className="min-w-0">
               <p className="font-bold text-rose-600 dark:text-rose-400">Gagal Mengambil Video</p>
@@ -859,18 +729,18 @@ export default function App() {
         {/* STUDIO WORKSPACE (PREVIEW & TRIMMING CONTROLS)                 */}
         {/* ============================================================== */}
         {(state === 'preview' || busy) && (
-          <section className="anim-fade-up space-y-4 sm:space-y-5 max-w-4xl mx-auto">
+          <section className="studio-editor anim-fade-up space-y-4 sm:space-y-5" aria-label="Pratinjau dan pengaturan potongan">
             
             {/* ============================================================== */}
-            {/* 1. STUDIO VIDEO PREVIEW CARD (AUTO ASPECT RATIO & AUTOPLAY)    */}
+            {/* 1. VIDEO PREVIEW — playback starts on user interaction.       */}
             {/* ============================================================== */}
-            <div className="glass-studio-card rounded-2xl overflow-hidden bg-black/90 shadow-2xl border border-slate-200/80 dark:border-white/10">
+            <div className="editor-preview glass-studio-card rounded-2xl overflow-hidden bg-black/90 shadow-2xl border border-slate-200/80 dark:border-white/10">
               
               {/* Player Header / Status Bar */}
               <div className="px-4 py-2.5 sm:py-3 bg-slate-900/95 border-b border-white/10 flex items-center justify-between flex-wrap gap-2 text-[11px] sm:text-xs font-mono text-slate-300">
                 <div className="flex items-center gap-2">
                   <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse shadow-[0_0_8px_#f43f5e]" />
-                  <span className="font-bold tracking-wider text-slate-200">STUDIO PREVIEW</span>
+                  <span className="font-bold tracking-wider text-slate-200">Pratinjau video</span>
                 </div>
                 
                 {/* Dynamic Auto Aspect Ratio Badge */}
@@ -895,10 +765,10 @@ export default function App() {
                   <div className="p-6 sm:p-8 text-center space-y-3 bg-slate-900/95 flex flex-col items-center justify-center min-h-[200px] sm:min-h-[260px]">
                     <AlertCircle size={36} className="text-rose-400 animate-bounce" />
                     <p className="text-xs sm:text-sm font-semibold text-slate-100">
-                      Stream preview proxy dibatasi oleh CDN platform.
+                      Pratinjau video belum bisa diputar.
                     </p>
                     <p className="text-[11px] sm:text-xs text-slate-400 max-w-md leading-relaxed">
-                      Anda tetap dapat memotong ({fmt(start)} → {fmt(end)}) dan mengunduh media frame-accurate melalui server FFmpeg!
+                      Kamu tetap bisa mengatur potongan ({fmt(start)} → {fmt(end)}) dan mencoba mengunduhnya.
                     </p>
                     <div className="flex items-center gap-2 flex-wrap justify-center pt-2">
                       <button
@@ -908,7 +778,7 @@ export default function App() {
                         }}
                         className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-cyan-500/20 text-cyan-200 border border-cyan-400/30 text-xs font-bold hover:bg-cyan-500/30 transition cursor-pointer"
                       >
-                        <Play size={13} /> {streamAttempt === 0 ? 'Putar Direct CDN' : 'Putar Proxy Server'}
+                        <Play size={13} /> {streamAttempt === 0 ? 'Coba pemutar lain' : 'Coba pemutar utama'}
                       </button>
                       <button
                         onClick={() => {
@@ -930,7 +800,6 @@ export default function App() {
                       src={streamSrc}
                       poster={video.thumbnail}
                       controls
-                      autoPlay
                       loop
                       playsInline
                       preload="metadata"
@@ -958,11 +827,7 @@ export default function App() {
                       }}
                       onLoadedMetadata={(e) => {
                         const v = e.target;
-                        v.play().catch(() => {});
-                        if (audioRef.current) {
-                          audioRef.current.currentTime = v.currentTime || 0;
-                          audioRef.current.play().catch(() => {});
-                        }
+                        if (audioRef.current) audioRef.current.currentTime = v.currentTime || 0;
                         if (v.videoWidth && v.videoHeight) {
                           const w = v.videoWidth;
                           const h = v.videoHeight;
@@ -1085,13 +950,13 @@ export default function App() {
             {/* ============================================================== */}
             {/* 2. FITUR PANGKAS VIDEO (TIMELINE TEPAT DI BAWAH PREVIEW!)      */}
             {/* ============================================================== */}
-            <div className="glass-studio-card p-4 sm:p-5 rounded-2xl space-y-4 border border-rose-500/30 shadow-2xl">
+            <div className="editor-trim glass-studio-card p-4 sm:p-5 rounded-2xl space-y-4 border border-rose-500/30 shadow-2xl">
               
               {/* Timeline Header & Quick Presets */}
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <div className="flex items-center gap-2">
                   <span className="text-xs sm:text-sm font-mono font-bold uppercase tracking-wider text-rose-600 dark:text-rose-400 flex items-center gap-1.5">
-                    <Scissors size={15} /> FITUR PANGKAS VIDEO & AUDIO WAVEFORM
+                    <Scissors size={15} /> Atur potongan
                   </span>
                   <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20">
                     {fmtPrecise(clipLen)}
@@ -1109,6 +974,7 @@ export default function App() {
                   ].map((p) => (
                     <button
                       key={p.label}
+                      disabled={busy}
                       onClick={() => setPreset(p.sec)}
                       className="px-2.5 py-1 text-[10px] sm:text-xs font-mono font-semibold rounded-lg bg-slate-200/70 dark:bg-slate-800/70 text-slate-700 dark:text-slate-300 hover:bg-rose-500 hover:text-white dark:hover:bg-rose-500 transition cursor-pointer"
                     >
@@ -1116,6 +982,7 @@ export default function App() {
                     </button>
                   ))}
                   <button
+                    disabled={busy}
                     onClick={resetTrim}
                     className="ml-1 px-2.5 py-1 text-[10px] sm:text-xs font-mono text-slate-400 hover:text-rose-500 transition cursor-pointer"
                   >
@@ -1147,20 +1014,6 @@ export default function App() {
                   </div>
                 )}
 
-                {/* Simulated Audio Waveform Bars underneath */}
-                <div className="absolute inset-x-0 bottom-1 h-7 flex items-end justify-between px-3 opacity-60 pointer-events-none gap-1">
-                  {[4, 8, 14, 20, 10, 24, 16, 12, 22, 18, 8, 14, 26, 12, 16, 22, 10, 18, 24, 14, 8, 16, 20, 12, 6, 14, 22, 16, 10, 18].map((h, i) => (
-                    <div
-                      key={i}
-                      className={`w-1 rounded-full ${isPlaying ? 'waveform-bar-anim' : ''} bg-cyan-400`}
-                      style={{
-                        height: `${h}px`,
-                        animationDelay: `${(i % 5) * 0.15}s`
-                      }}
-                    />
-                  ))}
-                </div>
-
                 {/* Dimmed Left Region */}
                 <div
                   className="absolute top-0 bottom-0 left-0 bg-black/75 backdrop-blur-[1px] pointer-events-none"
@@ -1190,12 +1043,15 @@ export default function App() {
                 {/* Start Handle */}
                 <div
                   role="slider"
-                  tabIndex={0}
+                  tabIndex={busy ? -1 : 0}
+                  aria-disabled={busy}
                   aria-label="Waktu mulai"
                   aria-valuemin={0}
                   aria-valuemax={Math.floor(video.duration)}
                   aria-valuenow={Math.floor(start)}
                   onKeyDown={(e) => {
+                    if (busy) return;
+                    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') e.preventDefault();
                     if (e.key === 'ArrowLeft') nudge('start', -1);
                     if (e.key === 'ArrowRight') nudge('start', 1);
                   }}
@@ -1210,12 +1066,15 @@ export default function App() {
                 {/* End Handle */}
                 <div
                   role="slider"
-                  tabIndex={0}
+                  tabIndex={busy ? -1 : 0}
+                  aria-disabled={busy}
                   aria-label="Waktu selesai"
                   aria-valuemin={0}
                   aria-valuemax={Math.floor(video.duration)}
                   aria-valuenow={Math.floor(end)}
                   onKeyDown={(e) => {
+                    if (busy) return;
+                    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') e.preventDefault();
                     if (e.key === 'ArrowLeft') nudge('end', -1);
                     if (e.key === 'ArrowRight') nudge('end', 1);
                   }}
@@ -1231,30 +1090,30 @@ export default function App() {
               {/* Timecode Steppers & Quick Mark Buttons */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                 {/* Mulai (Start) Stepper */}
-                <div className="bg-slate-100/80 dark:bg-slate-900/80 border border-rose-500/30 rounded-xl p-3 flex items-center justify-between">
+                <div className="time-stepper bg-slate-100/80 dark:bg-slate-900/80 border border-rose-500/30 rounded-xl p-3 flex items-center justify-between">
                   <div>
-                    <div className="text-[10px] font-mono uppercase text-rose-600 dark:text-rose-400 font-bold">Mulai (Start Time)</div>
+                    <div className="text-[10px] font-mono uppercase text-rose-600 dark:text-rose-400 font-bold">Mulai</div>
                     <div className="font-mono text-lg sm:text-xl font-bold text-slate-800 dark:text-slate-100 mt-0.5">{fmtPrecise(start)}</div>
                   </div>
                   <div className="flex items-center gap-1">
-                    <button onClick={() => nudge('start', -1)} className="py-1 px-2 text-[10px] font-mono font-bold bg-slate-200 dark:bg-slate-800 rounded hover:bg-rose-500 hover:text-white transition cursor-pointer">-1s</button>
-                    <button onClick={() => nudge('start', -0.1)} className="py-1 px-2 text-[10px] font-mono font-bold bg-slate-200 dark:bg-slate-800 rounded hover:bg-rose-500 hover:text-white transition cursor-pointer">-.1</button>
-                    <button onClick={() => nudge('start', 0.1)} className="py-1 px-2 text-[10px] font-mono font-bold bg-slate-200 dark:bg-slate-800 rounded hover:bg-rose-500 hover:text-white transition cursor-pointer">+.1</button>
-                    <button onClick={() => nudge('start', 1)} className="py-1 px-2 text-[10px] font-mono font-bold bg-slate-200 dark:bg-slate-800 rounded hover:bg-rose-500 hover:text-white transition cursor-pointer">+1s</button>
+                    <button disabled={busy} aria-label="Kurangi waktu mulai 1 detik" onClick={() => nudge('start', -1)} className="py-1 px-2 text-[10px] font-mono font-bold bg-slate-200 dark:bg-slate-800 rounded hover:bg-rose-500 hover:text-white transition cursor-pointer">-1s</button>
+                    <button disabled={busy} aria-label="Kurangi waktu mulai 0.1 detik" onClick={() => nudge('start', -0.1)} className="py-1 px-2 text-[10px] font-mono font-bold bg-slate-200 dark:bg-slate-800 rounded hover:bg-rose-500 hover:text-white transition cursor-pointer">-.1</button>
+                    <button disabled={busy} aria-label="Tambah waktu mulai 0.1 detik" onClick={() => nudge('start', 0.1)} className="py-1 px-2 text-[10px] font-mono font-bold bg-slate-200 dark:bg-slate-800 rounded hover:bg-rose-500 hover:text-white transition cursor-pointer">+.1</button>
+                    <button disabled={busy} aria-label="Tambah waktu mulai 1 detik" onClick={() => nudge('start', 1)} className="py-1 px-2 text-[10px] font-mono font-bold bg-slate-200 dark:bg-slate-800 rounded hover:bg-rose-500 hover:text-white transition cursor-pointer">+1s</button>
                   </div>
                 </div>
 
                 {/* Selesai (End) Stepper */}
-                <div className="bg-slate-100/80 dark:bg-slate-900/80 border border-cyan-500/30 rounded-xl p-3 flex items-center justify-between">
+                <div className="time-stepper bg-slate-100/80 dark:bg-slate-900/80 border border-cyan-500/30 rounded-xl p-3 flex items-center justify-between">
                   <div>
-                    <div className="text-[10px] font-mono uppercase text-cyan-600 dark:text-cyan-400 font-bold">Selesai (End Time)</div>
+                    <div className="text-[10px] font-mono uppercase text-cyan-600 dark:text-cyan-400 font-bold">Selesai</div>
                     <div className="font-mono text-lg sm:text-xl font-bold text-slate-800 dark:text-slate-100 mt-0.5">{fmtPrecise(end)}</div>
                   </div>
                   <div className="flex items-center gap-1">
-                    <button onClick={() => nudge('end', -1)} className="py-1 px-2 text-[10px] font-mono font-bold bg-slate-200 dark:bg-slate-800 rounded hover:bg-cyan-500 hover:text-white transition cursor-pointer">-1s</button>
-                    <button onClick={() => nudge('end', -0.1)} className="py-1 px-2 text-[10px] font-mono font-bold bg-slate-200 dark:bg-slate-800 rounded hover:bg-cyan-500 hover:text-white transition cursor-pointer">-.1</button>
-                    <button onClick={() => nudge('end', 0.1)} className="py-1 px-2 text-[10px] font-mono font-bold bg-slate-200 dark:bg-slate-800 rounded hover:bg-cyan-500 hover:text-white transition cursor-pointer">+.1</button>
-                    <button onClick={() => nudge('end', 1)} className="py-1 px-2 text-[10px] font-mono font-bold bg-slate-200 dark:bg-slate-800 rounded hover:bg-cyan-500 hover:text-white transition cursor-pointer">+1s</button>
+                    <button disabled={busy} aria-label="Kurangi waktu selesai 1 detik" onClick={() => nudge('end', -1)} className="py-1 px-2 text-[10px] font-mono font-bold bg-slate-200 dark:bg-slate-800 rounded hover:bg-cyan-500 hover:text-white transition cursor-pointer">-1s</button>
+                    <button disabled={busy} aria-label="Kurangi waktu selesai 0.1 detik" onClick={() => nudge('end', -0.1)} className="py-1 px-2 text-[10px] font-mono font-bold bg-slate-200 dark:bg-slate-800 rounded hover:bg-cyan-500 hover:text-white transition cursor-pointer">-.1</button>
+                    <button disabled={busy} aria-label="Tambah waktu selesai 0.1 detik" onClick={() => nudge('end', 0.1)} className="py-1 px-2 text-[10px] font-mono font-bold bg-slate-200 dark:bg-slate-800 rounded hover:bg-cyan-500 hover:text-white transition cursor-pointer">+.1</button>
+                    <button disabled={busy} aria-label="Tambah waktu selesai 1 detik" onClick={() => nudge('end', 1)} className="py-1 px-2 text-[10px] font-mono font-bold bg-slate-200 dark:bg-slate-800 rounded hover:bg-cyan-500 hover:text-white transition cursor-pointer">+1s</button>
                   </div>
                 </div>
               </div>
@@ -1262,16 +1121,18 @@ export default function App() {
               {/* Quick Mark Playhead Buttons */}
               <div className="grid grid-cols-2 gap-2 pt-0.5">
                 <button
+                  disabled={busy}
                   onClick={markStart}
                   className="text-xs font-semibold rounded-xl border border-rose-500/30 bg-rose-500/10 text-rose-700 dark:text-rose-300 py-2.5 px-2 text-center truncate hover:bg-rose-500/20 transition cursor-pointer"
                 >
-                  📍 Tandai Mulai pada [{fmt(now)}]
+                  Tandai mulai
                 </button>
                 <button
+                  disabled={busy}
                   onClick={markEnd}
                   className="text-xs font-semibold rounded-xl border border-cyan-500/30 bg-cyan-500/10 text-cyan-700 dark:text-cyan-300 py-2.5 px-2 text-center truncate hover:bg-cyan-500/20 transition cursor-pointer"
                 >
-                  🏁 Tandai Selesai pada [{fmt(now)}]
+                  Tandai selesai
                 </button>
               </div>
 
@@ -1280,7 +1141,7 @@ export default function App() {
             {/* ============================================================== */}
             {/* 3. FORMAT SUITE & TOMBOL UNDUH                                 */}
             {/* ============================================================== */}
-            <div className="grid md:grid-cols-12 gap-4">
+            <div className="editor-export grid md:grid-cols-12 gap-4">
               
               {/* Left: Format Selector (7 Cols) */}
               <div className="md:col-span-7 glass-studio-card p-4 sm:p-5 rounded-2xl space-y-3.5">
@@ -1289,13 +1150,14 @@ export default function App() {
                     <Sliders size={13} /> PILIH FORMAT KELUARAN
                   </span>
                   <span className="text-[10px] font-mono text-emerald-500 dark:text-emerald-400 font-bold bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
-                    FFMPEG FAST
+                    MP4 · MP3
                   </span>
                 </div>
 
                 {/* Format 2-Tab Selector */}
                 <div className="grid grid-cols-2 gap-2 bg-slate-100 dark:bg-slate-900/90 p-1.5 rounded-xl border border-slate-200 dark:border-white/10">
                   <button
+                    disabled={busy} aria-pressed={format === 'mp4'}
                     onClick={() => setFormat('mp4')}
                     className={`flex items-center justify-center gap-2 py-3 px-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                       format === 'mp4'
@@ -1307,6 +1169,7 @@ export default function App() {
                     <span>MP4 Video</span>
                   </button>
                   <button
+                    disabled={busy} aria-pressed={format === 'mp3'}
                     onClick={() => setFormat('mp3')}
                     className={`flex items-center justify-center gap-2 py-3 px-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                       format === 'mp3'
@@ -1322,10 +1185,10 @@ export default function App() {
                 {/* Resolution selector for MP4 */}
                 {format === 'mp4' && (
                   <div className="anim-fade-up">
-                    <label className="block text-[10px] font-mono font-bold uppercase text-slate-500 dark:text-slate-400 mb-1.5">
-                      Resolusi Video (7 Platform)
+                    <label htmlFor="video-resolution" className="block text-[10px] font-mono font-bold uppercase text-slate-500 dark:text-slate-400 mb-1.5">
+                      Resolusi video
                     </label>
-                    <select
+                    <select id="video-resolution" disabled={busy}
                       value={resolution}
                       onChange={(e) => setResolution(e.target.value)}
                       className="w-full rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-white/15 px-3 py-2.5 text-xs font-semibold text-slate-800 dark:text-slate-100 outline-none focus:ring-2 focus:ring-rose-500/40 shadow-sm cursor-pointer"
@@ -1343,7 +1206,7 @@ export default function App() {
                 {format === 'mp3' && (
                   <div className="anim-fade-up p-3 rounded-xl bg-purple-500/10 border border-purple-500/20 text-xs text-purple-700 dark:text-purple-300 font-mono flex items-center gap-2">
                     <Music size={15} className="text-purple-500 shrink-0" />
-                    <span>Ekstraksi audio murni <b>320kbps Lossless HQ</b> tanpa watermark video.</span>
+                    <span>Simpan suara sebagai <b>MP3 320 kbps</b>.</span>
                   </div>
                 )}
               </div>
@@ -1360,7 +1223,7 @@ export default function App() {
                     <span className="text-cyan-600 dark:text-cyan-400 font-bold">~{estSizeMb} MB</span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-slate-500 dark:text-slate-400">Kecepatan Server:</span>
+                    <span className="text-slate-500 dark:text-slate-400">Koneksi server:</span>
                     <BackendStatus status={backendPing} />
                   </div>
                 </div>
@@ -1370,16 +1233,16 @@ export default function App() {
                   <div className="anim-fade-up p-3.5 rounded-xl border border-rose-500/30 bg-rose-500/10 space-y-2">
                     <div className="flex items-center justify-between text-xs font-mono font-bold text-rose-600 dark:text-rose-400">
                       <span className="inline-flex items-center gap-1.5">
-                        <Clock size={13} className="text-amber-400 animate-spin-slow" /> Sisa: {fmtEstRemaining(elapsedMs, clipLen)}
+                        <Clock size={13} className="text-amber-400 animate-spin-slow" /> Waktu: {fmtElapsed(elapsedMs)}
                       </span>
-                      <span className="text-cyan-500 dark:text-cyan-400 font-extrabold">{displayPct}%</span>
+                      {displayPct !== null && <span className="text-cyan-500 dark:text-cyan-400 font-extrabold">{displayPct}%</span>}
                     </div>
 
                     <div className="flex items-center justify-between text-xs font-semibold text-slate-800 dark:text-slate-200">
                       <span className="inline-flex items-center gap-1.5 text-[11px]">
                         {state === 'processing' ? (
                           <>
-                            <Loader2 className="animate-spin text-rose-500 shrink-0" size={13} /> Memproses di FFmpeg ({displayPct}%)…
+                            <Loader2 className="animate-spin text-rose-500 shrink-0" size={13} /> Menyiapkan file…
                           </>
                         ) : (
                           <>
@@ -1389,12 +1252,12 @@ export default function App() {
                       </span>
                     </div>
 
-                    <div className="h-2.5 rounded-full overflow-hidden bg-slate-200 dark:bg-slate-900 border border-rose-500/20 p-0.5 shadow-inner">
+                    {displayPct !== null && <div role="progressbar" aria-label="Kemajuan unduhan" aria-valuenow={displayPct} aria-valuemin={0} aria-valuemax={100} className="h-2.5 rounded-full overflow-hidden bg-slate-200 dark:bg-slate-900 border border-rose-500/20 p-0.5 shadow-inner">
                       <div
                         className="h-full bg-gradient-to-r from-rose-500 via-purple-500 to-cyan-400 transition-all duration-300 rounded-full shadow-md"
                         style={{ width: `${displayPct}%` }}
                       />
-                    </div>
+                    </div>}
                   </div>
                 )}
 
@@ -1407,7 +1270,7 @@ export default function App() {
                   {busy ? (
                     <>
                       <Loader2 className="animate-spin text-white" size={17} />
-                      <span>{state === 'downloading' ? 'Mentransfer File ke Perangkat…' : 'Sedang Memotong Media…'}</span>
+                      <span>{state === 'downloading' ? 'Mengunduh…' : 'Memproses…'}</span>
                     </>
                   ) : (
                     <>
@@ -1421,7 +1284,7 @@ export default function App() {
             </div>
 
             {/* Sidebar / Bottom Ad Placement */}
-            <div className="pt-2">
+            <div className="editor-sponsor pt-2">
               <div className="hidden md:block">
                 <AdBanner728 />
               </div>
@@ -1432,197 +1295,39 @@ export default function App() {
           </section>
         )}
 
-        {/* ============================================================== */}
-        {/* 4. PLATFORMS SHOWCASE SECTION (SEO & TRUST)                    */}
-        {/* ============================================================== */}
-        <section id="platforms" className="mt-14 sm:mt-20 scroll-mt-6">
-          <div className="text-center max-w-2xl mx-auto mb-8 sm:mb-10 px-2">
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/25 text-cyan-600 dark:text-cyan-400 text-[11px] font-mono mb-2.5">
-              <Layers size={13} className="text-cyan-400" /> Kompatibilitas Multi-Platform
-            </div>
-            <h2 className="font-display text-xl sm:text-3xl font-black tracking-tight text-slate-900 dark:text-slate-100">
-              7 Platform Sosial Media Didukung Penuh
-            </h2>
-            <p className="mt-2 text-xs sm:text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
-              Dukungan komprehensif untuk pengunduhan video dan pemotongan durasi dari ekosistem video pendek terbesar di dunia.
-            </p>
-          </div>
+        {(state !== 'preview' && !busy) && <div className="sponsor-slot"><div className="hidden md:block"><AdBanner728 /></div><div className="block md:hidden"><AdBanner300 /></div></div>}
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 sm:gap-4">
-            {PLATFORM_DETAILS.map((p) => (
-              <div
-                key={p.key}
-                className="glass-studio-card rounded-2xl p-4 sm:p-5 flex flex-col justify-between hover:border-rose-500/40 hover:-translate-y-0.5 transition-all duration-300 group shadow-sm"
-              >
-                <div>
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-2.5">
-                      <img src={`/logos/logo_${p.key}.png`} alt={p.name} className="w-7 h-7 rounded-lg object-contain drop-shadow-sm group-hover:scale-105 transition-transform" />
-                      <h3 className="font-display font-bold text-sm sm:text-base text-slate-900 dark:text-slate-100">
-                        {p.name}
-                      </h3>
-                    </div>
-                    <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-md border ${p.badgeClass}`}>
-                      {p.badge}
-                    </span>
-                  </div>
-                  <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed mb-3">
-                    {p.desc}
-                  </p>
-                  <ul className="space-y-1.5 border-t border-slate-100 dark:border-white/5 pt-3 mb-3 text-[11px] font-mono text-slate-600 dark:text-slate-300">
-                    {p.features.map((feat, fi) => (
-                      <li key={fi} className="flex items-center gap-1.5">
-                        <Check size={12} className="text-emerald-500 shrink-0" />
-                        <span>{feat}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-                <button
-                  onClick={() => {
-                    if (!url) {
-                      setToast(`Tempelkan tautan dari ${p.name} ke bilah pencarian di atas.`);
-                    }
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                  }}
-                  className="w-full py-2 px-3 rounded-xl text-xs font-mono font-bold bg-slate-100 dark:bg-slate-900 hover:bg-rose-500/15 hover:text-rose-500 dark:hover:text-rose-400 border border-slate-200/70 dark:border-white/10 transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
-                >
-                  <span>Gunakan untuk {p.name.split(' ')[0]}</span>
-                  <ArrowRight size={12} />
-                </button>
-              </div>
-            ))}
+        <section id="platforms" className="platform-section content-section">
+          <div className="section-heading"><h2>Semua sumber. Satu studio.</h2><p>Video panjang, klip singkat, atau audio favorit. Bawa tautan publiknya ke sini.</p></div>
+          <div className="platform-directory">{PLATFORM_DETAILS.map(p => <button key={p.key} className="directory-row" onClick={() => { document.getElementById('video-url')?.focus(); setToast(`Tempel tautan ${p.name} untuk mulai.`); }}>
+            <img src={`/logos/logo_${p.key}.png`} width="32" height="32" alt="" /><span>{p.name.split(' ')[0]}</span><ArrowRight size={17} />
+          </button>)}</div>
+        </section>
+
+        <section id="features" className="features-section content-section">
+          <div className="section-heading"><h2>Simpan yang kamu perlukan.</h2><p>Satu ruang kerja untuk video utuh, potongan pendek, dan audio.</p></div>
+          <div className="feature-layout">
+            <article className="feature-main"><Scissors size={25} /><h3>Pas di momen yang kamu mau.</h3><p>Geser titik mulai dan selesai, atau tentukan waktunya dengan lebih presisi. Simpan bagian pilihanmu tanpa mengedit di aplikasi lain.</p><a className="text-link" href="#converter">Mulai potong video <ArrowRight size={16} /></a></article>
+            <div className="feature-notes"><article><Music size={22} /><div><h3>Videonya. Atau cukup suaranya.</h3><p>Pilih MP4 untuk video, atau MP3 untuk menyimpan audio.</p></div></article><article><Monitor size={22} /><div><h3>Dari browser ke perangkatmu.</h3><p>Atur kualitas yang tersedia, lihat pratinjau, lalu unduh hasilnya.</p></div></article></div>
           </div>
         </section>
 
-        {/* ============================================================== */}
-        {/* 5. WHY CHOOSE KLIPRAVA (FEATURE HIGHLIGHTS)                     */}
-        {/* ============================================================== */}
-        <section id="features" className="mt-14 sm:mt-20 scroll-mt-6">
-          <div className="text-center max-w-2xl mx-auto mb-8 sm:mb-10 px-2">
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-500/10 border border-rose-500/25 text-rose-600 dark:text-rose-400 text-[11px] font-mono mb-2.5">
-              <Sparkles size={13} className="text-rose-400" /> Keunggulan Standar Studio
-            </div>
-            <h2 className="font-display text-xl sm:text-3xl font-black tracking-tight text-slate-900 dark:text-slate-100">
-              Mengapa Memilih Kliprava Studio?
-            </h2>
-            <p className="mt-2 text-xs sm:text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
-              Dibuat dengan teknologi mutakhir untuk memberikan pengalaman unduh dan potong media tercepat, terbersih, dan teraman.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 sm:gap-4">
-            {FEATURES.map((f, i) => {
-              const Icon = f.icon;
-              return (
-                <div
-                  key={i}
-                  className="glass-studio-card rounded-2xl p-5 sm:p-6 hover:border-cyan-500/40 hover:-translate-y-0.5 transition-all duration-300 group"
-                >
-                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-rose-500/20 to-purple-500/20 border border-rose-500/30 flex items-center justify-center text-rose-500 dark:text-rose-400 mb-4 group-hover:scale-110 transition-transform">
-                    <Icon size={20} />
-                  </div>
-                  <h3 className="font-display font-bold text-sm sm:text-base text-slate-900 dark:text-slate-100 mb-1.5">
-                    {f.title}
-                  </h3>
-                  <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                    {f.desc}
-                  </p>
-                </div>
-              );
-            })}
-          </div>
+        <section id="how-it-works" className="guide-section content-section">
+          <div className="section-heading"><h2>Dari tautan ke klip.</h2><p>Empat langkah, semuanya di halaman ini.</p></div>
+          <ol className="guide-steps">{[
+            ['Salin tautan', 'Buka video di platform asal, lalu pilih Salin Tautan.'],
+            ['Ambil video', 'Tempel tautan di atas dan klik Ambil video.'],
+            ['Pilih bagian', 'Atur awal, akhir, kualitas, dan format file.'],
+            ['Simpan hasil', 'Klik Unduh dan tunggu sampai file siap.'],
+          ].map(([title, desc], i) => <li key={title}><span className="step-number">0{i + 1}</span><h3>{title}</h3><p>{desc}</p></li>)}</ol>
         </section>
 
-        {/* ============================================================== */}
-        {/* 6. HOW IT WORKS (STEP-BY-STEP GUIDE)                           */}
-        {/* ============================================================== */}
-        <section id="how-it-works" className="mt-14 sm:mt-20 scroll-mt-6">
-          <div className="text-center max-w-2xl mx-auto mb-8 sm:mb-10 px-2">
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-purple-500/10 border border-purple-500/25 text-purple-600 dark:text-purple-400 text-[11px] font-mono mb-2.5">
-              <Zap size={13} className="text-purple-400" /> Panduan Penggunaan
-            </div>
-            <h2 className="font-display text-xl sm:text-3xl font-black tracking-tight text-slate-900 dark:text-slate-100">
-              Cara Mengunduh & Memotong Video
-            </h2>
-            <p className="mt-2 text-xs sm:text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
-              Hanya perlu 4 langkah mudah untuk mengambil bagian video favorit Anda dalam resolusi HD.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-4">
-            {STEPS.map((s, i) => (
-              <div
-                key={i}
-                className="glass-studio-card rounded-2xl p-5 flex flex-col justify-between hover:border-purple-500/40 transition-all duration-300 relative overflow-hidden"
-              >
-                <span className="text-3xl sm:text-4xl font-display font-black text-rose-500/20 dark:text-rose-400/15 select-none mb-3">
-                  {s.num}
-                </span>
-                <div>
-                  <h3 className="font-display font-bold text-sm text-slate-900 dark:text-slate-100 mb-1.5">
-                    {s.title}
-                  </h3>
-                  <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                    {s.desc}
-                  </p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        {/* ============================================================== */}
-        {/* 7. FAQ ACCORDION SECTION (GOOGLE SEARCH RICH SNIPPETS)         */}
-        {/* ============================================================== */}
-        <section id="faq" className="mt-14 sm:mt-20 max-w-3xl mx-auto scroll-mt-6">
-          <div className="text-center mb-8 sm:mb-10 px-2">
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/25 text-amber-600 dark:text-amber-400 text-[11px] font-mono mb-2.5">
-              <HelpCircle size={13} className="text-amber-400" /> Pusat Bantuan
-            </div>
-            <h2 className="font-display text-xl sm:text-3xl font-black tracking-tight text-slate-900 dark:text-slate-100">
-              Pertanyaan yang Sering Diajukan (FAQ)
-            </h2>
-            <p className="mt-2 text-xs sm:text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
-              Informasi lengkap mengenai cara kerja, privasi data, dan tips unduh video tanpa watermark di Kliprava.
-            </p>
-          </div>
-
-          <div className="space-y-2.5">
-            {FAQS.map((faq, idx) => {
-              const isOpen = openFaq === idx;
-              return (
-                <div
-                  key={idx}
-                  className="glass-studio-card rounded-2xl border border-slate-200/80 dark:border-white/10 overflow-hidden transition-all duration-200"
-                >
-                  <button
-                    onClick={() => setOpenFaq(isOpen ? null : idx)}
-                    className="w-full p-4 sm:p-4.5 text-left flex items-center justify-between gap-3 text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-100 hover:text-rose-500 dark:hover:text-rose-400 transition-colors cursor-pointer"
-                    aria-expanded={isOpen}
-                  >
-                    <span className="flex items-center gap-2.5">
-                      <span className="w-5 h-5 rounded-full bg-rose-500/15 text-rose-500 dark:text-rose-400 text-[10px] font-mono flex items-center justify-center shrink-0">
-                        {idx + 1}
-                      </span>
-                      <span>{faq.q}</span>
-                    </span>
-                    <ChevronDown
-                      size={16}
-                      className={`shrink-0 transition-transform duration-300 text-slate-400 ${
-                        isOpen ? 'rotate-180 text-rose-500' : ''
-                      }`}
-                    />
-                  </button>
-                  {isOpen && (
-                    <div className="px-4 sm:px-4.5 pb-4 pt-1 text-xs text-slate-600 dark:text-slate-300 leading-relaxed border-t border-slate-100 dark:border-white/5 anim-fade-up">
-                      <p className="pl-7">{faq.a}</p>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
+        <section id="faq" className="faq-section content-section">
+          <div className="section-heading"><h2>Ada yang ingin ditanyakan?</h2><p>Beberapa hal sebelum kamu mulai.</p><a className="text-link" href="#converter">Kembali ke ruang edit <ArrowRight size={16} /></a></div>
+          <div className="faq-list">{FAQS.map((faq, idx) => <div className="faq-item" key={faq.q}>
+            <h3><button onClick={() => setOpenFaq(openFaq === idx ? null : idx)} aria-expanded={openFaq === idx} aria-controls={`faq-answer-${idx}`}><span>{faq.q}</span><ChevronDown size={18} className={openFaq === idx ? 'rotate-180' : ''} /></button></h3>
+            <div id={`faq-answer-${idx}`} hidden={openFaq !== idx}><p>{faq.a}</p></div>
+          </div>)}</div>
         </section>
 
         {/* Native Ad Placement at the Bottom */}
@@ -1641,12 +1346,34 @@ export default function App() {
 
       {/* Toast Notification */}
       {toast && (
-        <div className="anim-fade-up fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2.5 rounded-2xl bg-gradient-to-r from-rose-500 via-purple-600 to-cyan-500 text-white font-bold text-xs px-5 py-3 shadow-2xl shadow-rose-500/40 border border-white/20">
+        <div className="studio-toast" role="status">
           <CheckCircle size={18} /> {toast}
         </div>
       )}
     </div>
   );
+}
+
+function MediaArtwork() {
+  return <svg className="media-artwork" viewBox="0 0 400 300" aria-hidden="true" focusable="false">
+    <ellipse cx="207" cy="260" rx="126" ry="13" fill="var(--color-art-shadow)" />
+    <g transform="rotate(13 227 139)">
+      <rect x="135" y="45" width="196" height="167" rx="18" fill="var(--color-art-sheet)" />
+      <rect x="149" y="60" width="168" height="137" rx="9" fill="var(--color-art-ground)" />
+      <path d="M161 166L202 126L231 151L254 133L305 183H161Z" fill="var(--color-art-line)" />
+      <circle cx="275" cy="94" r="14" fill="var(--color-art-sheet)" />
+    </g>
+    <g transform="rotate(-13 171 169)">
+      <rect x="58" y="102" width="215" height="148" rx="19" fill="var(--color-art-depth)" />
+      <rect x="58" y="92" width="215" height="148" rx="19" fill="var(--color-art-lime)" />
+      <path d="M149 132L193 159Q202 165 193 171L149 198Q141 203 141 193V137Q141 127 149 132Z" fill="var(--color-art-ground)" />
+      {[80,112,144,176,208,240].map(x => <g key={x}><rect x={x} y="103" width="12" height="7" rx="2" fill="var(--color-art-ground)" /><rect x={x} y="222" width="12" height="7" rx="2" fill="var(--color-art-ground)" /></g>)}
+    </g>
+    <path d="M315 211L345 241M319 247L346 216" stroke="var(--color-art-sheet)" strokeWidth="3" strokeLinecap="round" />
+    <circle cx="308" cy="203" r="9" fill="none" stroke="var(--color-art-sheet)" strokeWidth="3" />
+    <circle cx="310" cy="255" r="9" fill="none" stroke="var(--color-art-sheet)" strokeWidth="3" />
+    <path d="M34 77L100 60" stroke="var(--color-art-line)" strokeWidth="2" strokeDasharray="5 7" />
+  </svg>;
 }
 
 function mapNetErr(e) {
@@ -1694,10 +1421,10 @@ function AdBanner728() {
 
   return (
     <div className="flex flex-col items-center justify-center my-3 overflow-hidden">
-      <span className="text-[9px] font-mono tracking-widest text-slate-400 dark:text-slate-500 uppercase mb-1">
+      <span className="ad-label text-[9px] font-mono tracking-widest text-slate-400 dark:text-slate-500 uppercase mb-1">
         Sponsored Utility
       </span>
-      <div className="w-[728px] h-[90px] max-w-full overflow-hidden flex items-center justify-center rounded-2xl bg-slate-100 dark:bg-slate-900/40 border border-slate-200 dark:border-white/10 shadow-sm">
+      <div className="ad-surface w-[728px] h-[90px] max-w-full overflow-hidden flex items-center justify-center rounded-2xl bg-slate-100 dark:bg-slate-900/40 border border-slate-200 dark:border-white/10 shadow-sm">
         <iframe
           title="ad-728x90"
           srcDoc={srcDoc}
@@ -1740,10 +1467,10 @@ function AdBanner300() {
 
   return (
     <div className="flex flex-col items-center justify-center my-2.5 overflow-hidden">
-      <span className="text-[9px] font-mono tracking-widest text-slate-400 dark:text-slate-500 uppercase mb-1">
+      <span className="ad-label text-[9px] font-mono tracking-widest text-slate-400 dark:text-slate-500 uppercase mb-1">
         Sponsored Content
       </span>
-      <div className="w-[300px] h-[250px] overflow-hidden flex items-center justify-center rounded-2xl bg-slate-100 dark:bg-slate-900/40 border border-slate-200 dark:border-white/10 shadow-sm">
+      <div className="ad-surface w-[300px] h-[250px] overflow-hidden flex items-center justify-center rounded-2xl bg-slate-100 dark:bg-slate-900/40 border border-slate-200 dark:border-white/10 shadow-sm">
         <iframe
           title="ad-300x250"
           srcDoc={srcDoc}
@@ -1777,13 +1504,13 @@ function AdNativeBanner() {
   return (
     <div className="w-full max-w-4xl mx-auto my-4 px-2" ref={adRef}>
       <div className="flex items-center justify-center mb-1">
-        <span className="text-[9px] font-mono tracking-widest text-slate-400 dark:text-slate-500 uppercase">
+        <span className="ad-label text-[9px] font-mono tracking-widest text-slate-400 dark:text-slate-500 uppercase">
           Sponsored Recommendation
         </span>
       </div>
       <div
         id="container-b52019ce5352c5da703df76d0a336b9a"
-        className="min-h-[60px] rounded-2xl overflow-hidden flex items-center justify-center bg-slate-100 dark:bg-slate-900/30 border border-slate-200 dark:border-white/10"
+        className="ad-surface min-h-[60px] rounded-2xl overflow-hidden flex items-center justify-center bg-slate-100 dark:bg-slate-900/30 border border-slate-200 dark:border-white/10"
       />
     </div>
   );
@@ -1798,128 +1525,26 @@ function BackendStatus({ status }) {
 }
 
 function Footer({ onOpenModal, backendPing }) {
-  return (
-    <footer className="relative z-20 mt-16 border-t border-slate-200/80 dark:border-white/10 bg-white/40 dark:bg-[#070A14]/80 backdrop-blur-xl pt-12 pb-10">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6">
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-8 pb-8 border-b border-slate-200/60 dark:border-white/10">
-          
-          {/* Brand & Description (5 cols) */}
-          <div className="md:col-span-5 space-y-3">
-            <div className="flex items-center gap-2.5">
-              <img src="/logo-app.png" alt="Kliprava" className="w-8 h-8 rounded-xl object-contain shadow-md" />
-              <span className="font-display text-lg font-black tracking-tight bg-gradient-to-r from-rose-500 via-purple-400 to-cyan-400 bg-clip-text text-transparent">
-                Kliprava<span className="text-rose-500">.</span>
-              </span>
-              <span className="text-[9px] font-mono font-bold uppercase rounded px-1.5 py-0.5 bg-rose-500/15 text-rose-500 dark:text-rose-400 border border-rose-500/25">
-                STUDIO 3.5
-              </span>
-            </div>
-            <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed max-w-sm">
-              Layanan ekstraksi multimedia dan pemotong video presisi milidetik online gratis untuk TikTok, Instagram, YouTube, Douyin, FB, X, dan Rednote.
-            </p>
-            <div className="flex items-center gap-2 pt-1 text-[11px] font-mono text-slate-500 dark:text-slate-400">
-              <BackendStatus status={backendPing} />
-            </div>
-          </div>
-
-          {/* Navigasi Cepat (3 cols) */}
-          <div className="md:col-span-3 space-y-2.5">
-            <h4 className="text-xs font-mono font-bold uppercase tracking-wider text-slate-900 dark:text-slate-100">
-              Navigasi Cepat
-            </h4>
-            <ul className="space-y-2 text-xs text-slate-600 dark:text-slate-400 font-medium">
-              <li>
-                <button onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} className="hover:text-rose-500 transition-colors cursor-pointer text-left">
-                  Beranda & Alat Unduh
-                </button>
-              </li>
-              <li>
-                <a href="#platforms" className="hover:text-rose-500 transition-colors">
-                  7 Platform yang Didukung
-                </a>
-              </li>
-              <li>
-                <a href="#features" className="hover:text-rose-500 transition-colors">
-                  Keunggulan Kliprava
-                </a>
-              </li>
-              <li>
-                <a href="#how-it-works" className="hover:text-rose-500 transition-colors">
-                  Panduan Cara Pakai
-                </a>
-              </li>
-              <li>
-                <a href="#faq" className="hover:text-rose-500 transition-colors">
-                  Tanya Jawab (FAQ)
-                </a>
-              </li>
-            </ul>
-          </div>
-
-          {/* Kebijakan & Legal (4 cols) */}
-          <div className="md:col-span-4 space-y-2.5">
-            <h4 className="text-xs font-mono font-bold uppercase tracking-wider text-slate-900 dark:text-slate-100">
-              Kepatuhan & Privasi
-            </h4>
-            <ul className="space-y-2 text-xs text-slate-600 dark:text-slate-400 font-medium">
-              <li>
-                <button
-                  onClick={() => onOpenModal('privacy')}
-                  className="hover:text-rose-500 transition-colors text-left flex items-center gap-1.5 cursor-pointer"
-                >
-                  <Shield size={12} className="text-emerald-400" />
-                  <span>Kebijakan Privasi (Zero-Logs)</span>
-                </button>
-              </li>
-              <li>
-                <button
-                  onClick={() => onOpenModal('terms')}
-                  className="hover:text-rose-500 transition-colors text-left flex items-center gap-1.5 cursor-pointer"
-                >
-                  <FileText size={12} className="text-cyan-400" />
-                  <span>Ketentuan Layanan (Fair Use)</span>
-                </button>
-              </li>
-              <li>
-                <button
-                  onClick={() => onOpenModal('disclaimer')}
-                  className="hover:text-rose-500 transition-colors text-left flex items-center gap-1.5 cursor-pointer"
-                >
-                  <Info size={12} className="text-amber-400" />
-                  <span>Penafian Hak Cipta & DMCA</span>
-                </button>
-              </li>
-            </ul>
-            <p className="text-[11px] text-slate-500 dark:text-slate-400 pt-1 leading-relaxed">
-              Kliprava menghormati hak cipta kreator dan tidak berafiliasi resmi dengan platform pihak ketiga mana pun.
-            </p>
-          </div>
-
-        </div>
-
-        {/* Bottom bar */}
-        <div className="pt-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500 dark:text-slate-400 font-mono text-center sm:text-left">
-          <p>© 2026 Kliprava Studio by Dav'site. Hak cipta dilindungi.</p>
-          <p className="text-[11px] opacity-80">
-            Didesain untuk kecepatan, presisi potong frame-accurate, & tanpa watermark.
-          </p>
-        </div>
-      </div>
-    </footer>
-  );
+  return <footer className="studio-footer page-width">
+    <div className="footer-top"><a href="#" className="studio-brand"><span>Kliprava<span className="brand-period">.</span></span></a><p>Potongan kecil. Cerita yang berarti.</p><BackendStatus status={backendPing} /></div>
+    <div className="footer-bottom"><p>© 2026 Kliprava · Dav’site</p><nav aria-label="Kebijakan"><button onClick={() => onOpenModal('privacy')}>Privasi</button><button onClick={() => onOpenModal('terms')}>Ketentuan</button><button onClick={() => onOpenModal('disclaimer')}>Hak cipta</button><a href="#faq">Bantuan</a></nav></div>
+  </footer>;
 }
 
 function LegalModal({ docKey, onClose }) {
   const doc = LEGAL_DOCS[docKey];
+  const dialogRef = useRef(null);
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    dialog?.showModal();
+    return () => dialog?.close();
+  }, []);
   if (!doc) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3.5 sm:p-4 bg-black/80 backdrop-blur-md anim-fade-up">
+    <dialog ref={dialogRef} aria-labelledby="legal-modal-title" className="legal-dialog" onCancel={onClose} onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
       <div
-        className="relative w-full max-w-2xl max-h-[85vh] flex flex-col rounded-2xl glass-studio-card bg-white/95 dark:bg-[#0c101c]/95 border border-slate-200 dark:border-white/15 shadow-2xl overflow-hidden"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="legal-modal-title"
+        className="legal-content relative w-full max-w-2xl max-h-[85vh] flex flex-col rounded-2xl glass-studio-card bg-white/95 dark:bg-[#0c101c]/95 border border-slate-200 dark:border-white/15 shadow-2xl overflow-hidden"
       >
         {/* Modal Header */}
         <div className="px-5 py-4 border-b border-slate-200 dark:border-white/10 flex items-center justify-between">
@@ -1957,7 +1582,7 @@ function LegalModal({ docKey, onClose }) {
         {/* Modal Footer */}
         <div className="px-5 py-3 border-t border-slate-200 dark:border-white/10 bg-slate-50/80 dark:bg-slate-900/80 flex items-center justify-between">
           <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400">
-            Kliprava Studio Legal Compliance
+            Dokumen Kliprava
           </span>
           <button
             onClick={onClose}
@@ -1967,7 +1592,7 @@ function LegalModal({ docKey, onClose }) {
           </button>
         </div>
       </div>
-    </div>
+    </dialog>
   );
 }
 

@@ -248,3 +248,13 @@ body {
   }
 }
 
+/* Hallmark theme bridge. Keep the existing Tailwind entry and legacy utilities. */
+:root, .dark {
+  --bg-primary: var(--color-paper);
+  --bg-secondary: var(--color-paper-3);
+  --text-primary: var(--color-ink);
+  --card-bg: var(--color-paper-2);
+  --card-border: var(--color-rule);
+}
+html, body { overflow-x: clip; }
+

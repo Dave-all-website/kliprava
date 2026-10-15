@@ -1,0 +1,33 @@
+[
+  {
+    "date": "2026-10-15",
+    "macrostructure": "Bento Grid",
+    "theme": "custom",
+    "theme_axes": "light + ink dark / Space Grotesk + Manrope / lime",
+    "vibe": "expressive monochrome creator workspace",
+    "nav": "N3 adapted app rail with mobile bottom navigation",
+    "footer": "Ft2",
+    "enrichment": "original film illustration",
+    "brief": "User requested complete redesign and selected black/white Creator Studio with lime; new app shell, typography, media panel and desktop export column"
+  },
+  {
+    "date": "2026-10-15",
+    "macrostructure": "Split Studio",
+    "theme": "Cobalt",
+    "theme_axes": "cool light + ink dark / existing geometric-sans / electric blue",
+    "nav": "N9",
+    "footer": "Ft5",
+    "enrichment": "none",
+    "brief": "More modern aesthetic: split hero with real converter, alternating platform section, dark guide band and statement footer"
+  },
+  {
+    "date": "2026-10-15",
+    "macrostructure": "Workbench",
+    "theme": "Midnight",
+    "theme_axes": "dark + light companion / geometric-sans / warm coral",
+    "nav": "N9",
+    "footer": "Ft2",
+    "enrichment": "none",
+    "brief": "Kliprava converter redesign for content creators, both light and dark modes"
+  }
+]

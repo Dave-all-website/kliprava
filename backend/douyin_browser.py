@@ -32,7 +32,7 @@ async def _extract(video_id, user_agent):
     async with async_playwright() as playwright:
         launch_options = {"headless": True, "timeout": 15000, "args": ["--no-sandbox", "--disable-dev-shm-usage"]}
         try:
-            browser = await playwright.chromium.launch(**launch_options)
+            browser = await playwright.chromium.launch(channel="chromium", **launch_options)
         except Exception:
             if sys.platform != "win32":
                 raise
@@ -44,22 +44,30 @@ async def _extract(video_id, user_agent):
 
             async def read_response(response):
                 parts = urlsplit(response.url)
-                if result.done() or response.status != 200 or parts.hostname != "www.douyin.com" or parts.path != "/aweme/v1/web/aweme/detail/":
+                if result.done() or parts.hostname != "www.douyin.com" or parts.path != "/aweme/v1/web/aweme/detail/":
+                    return
+                logger.info("Douyin browser detail HTTP %s for %s", response.status, video_id)
+                if response.status != 200:
                     return
                 try:
-                    info = parse_video_data(await response.json(), video_id, url, headers)
+                    data = await response.json()
+                    info = parse_video_data(data, video_id, url, headers)
                     if info and not result.done():
                         result.set_result(info)
+                    elif isinstance(data, dict):
+                        logger.info("Douyin browser returned no matching video; status_code=%s", data.get("status_code"))
                 except Exception:
                     logger.debug("Douyin browser response did not contain usable video metadata")
 
             page.on("response", read_response)
             try:
-                await page.goto(url, wait_until="domcontentloaded", timeout=20000)
-                return await asyncio.wait_for(asyncio.shield(result), timeout=20)
+                navigation = await page.goto(url, wait_until="domcontentloaded", timeout=20000)
+                logger.info("Douyin browser page HTTP %s for %s", navigation.status if navigation else None, video_id)
+                return await asyncio.wait_for(asyncio.shield(result), timeout=30)
             except Exception as exc:
                 if result.done() and not result.cancelled():
                     return result.result()
+                logger.warning("Douyin browser ended without video: %s", type(exc).__name__)
                 raise ValueError(
                     "Douyin belum memberikan video ke browser server tanpa login. "
                     "Coba lagi nanti atau gunakan postingan lain yang bisa diputar di browser tanpa login."

@@ -1,15 +1,23 @@
 export const DEFAULT_API = 'https://kliprava-api-production.up.railway.app';
 
 export function backendUrl(configuredUrl, development = false) {
+  const fallback = development ? 'http://localhost:8000' : DEFAULT_API;
   const value = configuredUrl?.trim();
-  if (value) {
-    const parsed = new URL(value);
+  if (!value) return fallback;
+
+  try {
+    const address = value.startsWith('//')
+      ? `https:${value}`
+      : /^[a-z][a-z\d+.-]*:\/\//i.test(value) ? value : `https://${value}`;
+    const parsed = new URL(address);
     if (!['http:', 'https:'].includes(parsed.protocol)) {
       throw new Error('VITE_API_URL harus menggunakan HTTP atau HTTPS.');
     }
-    return value.replace(/\/+$/, '');
+    return parsed.href.replace(/\/+$/, '');
+  } catch (_) {
+    console.warn('VITE_API_URL tidak valid; memakai alamat backend bawaan.');
+    return fallback;
   }
-  return development ? 'http://localhost:8000' : DEFAULT_API;
 }
 
 export async function checkBackend(api, signal) {

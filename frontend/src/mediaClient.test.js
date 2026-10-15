@@ -10,6 +10,22 @@ test('explicit API URLs including localhost are honored', () => {
   assert.equal(backendUrl('', false), DEFAULT_API);
 });
 
+test('deployment hostnames without a protocol use HTTPS', () => {
+  assert.equal(backendUrl('kliprava-api-production.up.railway.app'), DEFAULT_API);
+  assert.equal(backendUrl('  api.example.com/v1/  '), 'https://api.example.com/v1');
+  assert.equal(backendUrl('//api.example.com/'), 'https://api.example.com');
+  assert.equal(backendUrl('localhost:8000'), 'https://localhost:8000');
+});
+
+test('invalid backend configuration cannot crash application startup', (t) => {
+  const warning = t.mock.method(console, 'warn', () => {});
+  for (const value of ['https://', 'not a valid address', 'ftp://api.example.com']) {
+    assert.equal(backendUrl(value), DEFAULT_API);
+    assert.equal(backendUrl(value, true), 'http://localhost:8000');
+  }
+  assert.equal(warning.mock.callCount(), 6);
+});
+
 test('export uses the preview URL and trim even if input is subsequently edited', () => {
   const preview = { canonicalUrl: 'https://youtube.com/watch?v=videoA' };
   const payload = processPayload(preview, 1.234, 4.567, 'mp4', '1080');

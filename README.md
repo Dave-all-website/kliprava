@@ -314,6 +314,8 @@ tetap menjadi fallback sampai `VITE_API_URL` diisi dengan URL baru.
    ```env
    VITE_API_URL=https://ALAMAT-BACKEND-DARI-DASHBOARD
    ```
+   Gunakan URL lengkap dengan `https://`, misalnya `https://kliprava-api-production.up.railway.app`.
+   Setelah mengubah variabel, lakukan **Redeploy** agar nilai baru masuk ke build frontend.
 4. Klik **Deploy**. Webapp Anda langsung aktif secara global di Vercel Edge CDN!
 
 ---

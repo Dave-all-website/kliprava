@@ -22,12 +22,12 @@ def extract_browser_video(video_id, user_agent):
 
 
 async def _extract(video_id, user_agent):
-    from playwright.async_api import async_playwright
+    from playwright.async_api import async_playwright, TimeoutError as BrowserTimeoutError
 
     if not video_id.isdigit():
         raise ValueError("ID video Douyin tidak valid.")
     url = f"https://www.douyin.com/video/{video_id}"
-    headers = {"User-Agent": user_agent, "Referer": "https://www.douyin.com/"}
+    headers = {"Referer": "https://www.douyin.com/"}
     result = asyncio.get_running_loop().create_future()
     async with async_playwright() as playwright:
         launch_options = {"headless": True, "timeout": 15000, "args": ["--no-sandbox", "--disable-dev-shm-usage"]}
@@ -39,8 +39,11 @@ async def _extract(video_id, user_agent):
             browser = await playwright.chromium.launch(channel="msedge", **launch_options)
         try:
             # No login cookie file, persistent profile, or imported storage state.
-            context = await browser.new_context(user_agent=user_agent, locale="zh-CN", viewport={"width": 1280, "height": 800})
+            # Use the installed browser version and OS, not a stale Windows UA
+            # alongside Linux Chromium client hints.
+            context = await browser.new_context(locale="zh-CN", viewport={"width": 1280, "height": 800})
             page = await context.new_page()
+            headers["User-Agent"] = await page.evaluate("navigator.userAgent")
 
             async def read_response(response):
                 parts = urlsplit(response.url)
@@ -57,13 +60,25 @@ async def _extract(video_id, user_agent):
                     elif isinstance(data, dict):
                         logger.info("Douyin browser returned no matching video; status_code=%s", data.get("status_code"))
                 except Exception:
-                    logger.debug("Douyin browser response did not contain usable video metadata")
+                    logger.info("Douyin detail was not JSON; content_type=%s bytes=%s", response.headers.get("content-type"), response.headers.get("content-length"))
 
             page.on("response", read_response)
             try:
-                navigation = await page.goto(url, wait_until="domcontentloaded", timeout=20000)
-                logger.info("Douyin browser page HTTP %s for %s", navigation.status if navigation else None, video_id)
-                return await asyncio.wait_for(asyncio.shield(result), timeout=30)
+                # Let the site's own guest initialization finish before opening
+                # a post. No account cookies are loaded or exported.
+                try:
+                    await page.goto("https://www.douyin.com/", wait_until="domcontentloaded", timeout=15000)
+                except BrowserTimeoutError:
+                    logger.info("Douyin guest landing navigation exceeded its budget")
+                await page.wait_for_timeout(3000)
+                for route in (url, f"https://www.douyin.com/user/self?modal_id={video_id}"):
+                    try:
+                        navigation = await page.goto(route, wait_until="domcontentloaded", timeout=15000)
+                        logger.info("Douyin browser page HTTP %s route=%s", navigation.status if navigation else None, urlsplit(route).path)
+                        return await asyncio.wait_for(asyncio.shield(result), timeout=15)
+                    except (asyncio.TimeoutError, BrowserTimeoutError):
+                        logger.info("Douyin route returned no video; title=%s", (await page.title())[:120])
+                raise TimeoutError("No matching public video response")
             except Exception as exc:
                 if result.done() and not result.cancelled():
                     return result.result()

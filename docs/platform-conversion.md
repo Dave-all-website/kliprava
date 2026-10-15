@@ -35,8 +35,12 @@ Tes jaringan langsung tetap diperlukan karena akses platform dapat berubah.
 
 ## Douyin tanpa impor cookie login
 
-Setelah memeriksa halaman berbagi, backend membuka halaman desktop Douyin dengan
-Chromium dalam sesi sementara yang baru. Backend membaca respons detail video
+Setelah memeriksa halaman berbagi, backend membuka beranda Douyin dengan Chromium
+dalam sesi sementara yang baru dan memberi waktu untuk inisialisasi tamu sebelum
+membuka video. Browser memakai identitas versi dan sistem operasinya sendiri,
+bukan User-Agent Windows versi lama di Linux. Jika halaman video tidak memberikan
+data, backend mencoba rute `user/self?modal_id=...` dalam sesi yang sama.
+Backend membaca respons detail video
 hanya jika ID-nya cocok dengan tautan yang diminta, lalu mengunduh URL MP4 yang
 memuat video dan audio. Format DASH terpisah tidak dipakai sebagai MP4 gabungan.
 
@@ -53,3 +57,19 @@ Microsoft Edge digunakan sebagai cadangan jika Chromium tidak tersedia.
 Satu proses browser diizinkan sekaligus untuk membatasi pemakaian memori server.
 Akses tetap bergantung pada ketersediaan video dan respons Douyin terhadap
 koneksi server; berhasil di lokal belum membuktikan berhasil di Railway.
+
+### Verifikasi Railway, 15 Oktober 2026
+
+Deployment `23f69a46-3ac2-492c-a063-07c4e858e0ef`, kode `9ea9fb8`, berhasil diuji
+melalui API publik Railway tanpa mengimpor cookie Douyin:
+
+- Tautan `https://v.douyin.com/Q4d8B5M0l2I/` menghasilkan metadata video
+  `7675505205047348543`, durasi 1501,823 detik (HTTP 200).
+- Permintaan potongan 0–3 detik menghasilkan MP4 640x360 dengan video H.264
+  dan audio AAC, durasi keluaran 3,017 detik, 319.434 byte (HTTP 200).
+- Permintaan potongan yang sama menghasilkan MP3 116.186 byte (HTTP 200).
+  Pengunduhan sumber video panjang membuat pengujian MP3 memerlukan 116 detik.
+- Video kedua `7694279177201415418` juga menghasilkan metadata,
+  durasi 12,7 detik (HTTP 200).
+- Uji regresi backend: 52 lulus. Hasil ini memverifikasi dua tautan tersebut;
+  ketersediaan video lain tetap ditentukan oleh respons Douyin.

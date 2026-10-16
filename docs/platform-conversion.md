@@ -31,6 +31,26 @@ preview, dan hasil konversi langsung dari Railway diperlukan sebelum menyatakan
 jalur ini berhasil di production. Rujukan:
 [panduan PO Token yt-dlp](https://github.com/yt-dlp/yt-dlp/wiki/PO-Token-Guide).
 
+### Hasil uji 16 Oktober 2026
+
+Kode `b577e04` berhasil dideploy di Railway sebagai
+`7b6ee1cf-9014-4e97-a0d8-a8fd2f9920eb`. Hasilnya belum membuktikan konversi
+YouTube berhasil di Railway:
+
+- Lokal, tanpa cookie login: video `5lvh5c0yCJM` menghasilkan 42 format,
+  termasuk 13 format video MP4 HTTPS. Permintaan sampel 4.096 byte berhasil
+  dengan HTTP 206 dan `Content-Type: video/mp4`.
+- Railway: video yang sama dan video publik pembanding `jNQXAC9IVRw` masih
+  ditolak dengan `Sign in to confirm you're not a bot`. Uji preview dan konversi
+  tidak dilanjutkan karena metadata belum tersedia.
+- TikTok `https://www.tt.site/t/ZSgeFKy6c/` tetap menghasilkan metadata dan
+  URL video dengan HTTP 200 dari deployment yang sama.
+- 58 tes backend lulus. Tes otomatis tidak menjamin YouTube menerima IP server.
+
+Jika tetap tanpa login, langkah selanjutnya adalah menguji koneksi keluar yang
+diizinkan lewat `YOUTUBE_PROXY`. Tidak ada proxy atau cookie akun yang ditambahkan
+dalam pengujian ini; proxy juga tidak menjamin akses atau membuka video member.
+
 ### Konfigurasi sesi opsional untuk instalasi lain
 
 Jika Railway menerima pesan YouTube meminta verifikasi, administrator dapat

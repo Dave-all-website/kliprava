@@ -74,6 +74,7 @@ def test_download_tries_backup_cdn_before_extracting_again(monkeypatch, tmp_path
 
 
 def test_cookies_decoded_isolated_and_removed(monkeypatch):
+    monkeypatch.delenv("YOUTUBE_POT_SERVER_HOME", raising=False)
     jar = "# Netscape HTTP Cookie File\n.youtube.com\tTRUE\t/\tTRUE\t0\ttest\tvalue\n"
     monkeypatch.setenv("YOUTUBE_COOKIES", base64.b64encode(jar.encode()).decode())
     monkeypatch.setenv("YOUTUBE_PROXY", "http://proxy.example:8080")
@@ -92,15 +93,69 @@ def test_cookies_decoded_isolated_and_removed(monkeypatch):
     assert not Path(second["cookiefile"]).exists()
 
 
-def test_youtube_bot_error_is_not_retried_through_six_clients(monkeypatch):
+def test_anonymous_youtube_provider_never_imports_account_cookies(monkeypatch, tmp_path):
+    (tmp_path / "build").mkdir()
+    (tmp_path / "build" / "generate_once.js").touch()
+    monkeypatch.setenv("YOUTUBE_POT_SERVER_HOME", str(tmp_path))
+    monkeypatch.setenv("YOUTUBE_COOKIES", "invalid-cookie-must-not-be-read")
+    with ytdlp_options("https://youtu.be/abc") as opts:
+        assert "cookiefile" not in opts
+        assert opts["extractor_args"]["youtube"] == {"player_client": ["mweb"], "fetch_pot": ["always"]}
+        assert opts["extractor_args"]["youtubepot-bgutilscript"]["server_home"] == [str(tmp_path)]
+    with ytdlp_options("https://www.tiktok.com/@test/video/123") as opts:
+        assert "extractor_args" not in opts
+
+
+def test_missing_youtube_provider_fails_before_network(monkeypatch, tmp_path):
+    monkeypatch.setenv("YOUTUBE_POT_SERVER_HOME", str(tmp_path))
+    with pytest.raises(ValueError, match="PO Token YouTube belum terpasang"):
+        with ytdlp_options("https://youtu.be/abc"):
+            pytest.fail("Missing provider should not reach extraction")
+
+
+@pytest.mark.parametrize("message, expected", [
+    ("Sign in to confirm you're not a bot", "YouTube meminta verifikasi"),
+    ("Sign in to confirm you\u2019re not a bot", "YouTube meminta verifikasi"),
+    ("Join this channel to get access to members-only content like this video", "khusus member channel"),
+])
+def test_youtube_access_error_is_classified_without_retries(monkeypatch, message, expected):
     import yt_dlp
+    factory = Mock()
+    factory.return_value.__enter__ = Mock(return_value=Mock(extract_info=Mock(side_effect=Exception(message))))
+    factory.return_value.__exit__ = Mock(return_value=False)
+    monkeypatch.setattr(yt_dlp, "YoutubeDL", factory)
+    with pytest.raises(ValueError, match=expected):
+        scraper._extract_with_ytdlp("https://youtu.be/abc")
+    assert factory.call_count == 1
+
+
+def test_youtube_age_restriction_is_not_misreported_as_bot_verification(monkeypatch):
+    import yt_dlp
+    error = Exception("Sign in to confirm your age")
+    factory = Mock()
+    factory.return_value.__enter__ = Mock(return_value=Mock(extract_info=Mock(side_effect=error)))
+    factory.return_value.__exit__ = Mock(return_value=False)
+    monkeypatch.setattr(yt_dlp, "YoutubeDL", factory)
+    with pytest.raises(Exception) as caught:
+        scraper._extract_with_ytdlp("https://youtu.be/abc")
+    assert caught.value is error
+
+
+def test_anonymous_youtube_bot_error_does_not_request_login_cookies(monkeypatch, tmp_path):
+    import yt_dlp
+    (tmp_path / "build").mkdir()
+    (tmp_path / "build" / "generate_once.js").touch()
+    monkeypatch.setenv("YOUTUBE_POT_SERVER_HOME", str(tmp_path))
     factory = Mock()
     factory.return_value.__enter__ = Mock(return_value=Mock(extract_info=Mock(side_effect=Exception("Sign in to confirm you're not a bot"))))
     factory.return_value.__exit__ = Mock(return_value=False)
     monkeypatch.setattr(yt_dlp, "YoutubeDL", factory)
-    with pytest.raises(ValueError, match="YouTube meminta verifikasi"):
+    with pytest.raises(ValueError, match="masih menolak akses tamu") as caught:
         scraper._extract_with_ytdlp("https://youtu.be/abc")
-    assert factory.call_count == 1
+    assert "COOKIES" not in str(caught.value)
+    # A failed extraction must release the slot for the next request.
+    with ytdlp_options("https://youtu.be/abc") as options:
+        assert "cookiefile" not in options
 
 
 @pytest.mark.parametrize("max_height", [1080, 0])

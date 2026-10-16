@@ -1,8 +1,12 @@
 # Backend Kliprava — Docker deployment dengan build context backend/
 FROM node:24-bookworm-slim AS js-runtime
+FROM brainicism/bgutil-ytdlp-pot-provider:2.0.2@sha256:d7d34108b76e52c7d3b575fe9e797e4bf41c1b2a08f80c5292eff6f851ce8472 AS youtube-pot
 FROM python:3.12-slim-bookworm
 
 COPY --from=js-runtime /usr/local/bin/node /usr/local/bin/node
+COPY --from=youtube-pot /app /opt/youtube-pot
+ENV YOUTUBE_POT_SERVER_HOME=/opt/youtube-pot
+RUN node /opt/youtube-pot/build/generate_once.js --version
 
 # ffmpeg & nodejs wajib ada untuk memotong video & menyelesaikan JS challenge yt-dlp
 RUN apt-get update \

@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import os
 import random
 import re
 from typing import Any, Dict, List, Optional
@@ -450,7 +451,21 @@ def _extract_with_ytdlp(url: str, custom_headers: Optional[dict] = None) -> Dict
                 info = ydl.extract_info(url, download=False)
     except Exception as exc:
         message = str(exc).lower()
-        if platform_name(url) == "YOUTUBE" and ("not a bot" in message or "confirm you're" in message):
+        if platform_name(url) == "YOUTUBE" and (
+            "members-only" in message or "join this channel to get access" in message
+        ):
+            raise ValueError(
+                "Video YouTube ini khusus member channel. "
+                "Pilih video publik, atau gunakan sesi akun yang memiliki akses membership "
+                "melalui konfigurasi administrator."
+            ) from exc
+        if platform_name(url) == "YOUTUBE" and "not a bot" in message:
+            if os.environ.get("YOUTUBE_POT_SERVER_HOME", "").strip():
+                raise ValueError(
+                    "YouTube masih menolak akses tamu dari koneksi server ini. "
+                    "Coba lagi nanti atau gunakan video dari platform lain. "
+                    "Administrator perlu memeriksa penyedia PO Token dan koneksi keluar server."
+                ) from exc
             raise ValueError(
                 "YouTube meminta verifikasi untuk koneksi server ini. "
                 "Administrator perlu mengatur YOUTUBE_COOKIES yang masih berlaku "

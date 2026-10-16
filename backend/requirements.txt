@@ -5,6 +5,7 @@ redis>=5.0.0
 pydantic>=2.7.0
 pydantic-settings>=2.2.0
 yt-dlp[default]>=2026.8.19
+bgutil-ytdlp-pot-provider==2.0.2
 playwright>=1.44.0
 playwright-stealth>=2.0.0
 ffmpeg-python>=0.2.0

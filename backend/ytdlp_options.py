@@ -3,11 +3,15 @@ import base64
 import os
 import random
 import tempfile
+import threading
 from contextlib import contextmanager
 from pathlib import Path
 from urllib.parse import urlsplit
 
 from config import settings
+
+
+_youtube_pot_slot = threading.BoundedSemaphore(1)
 
 
 def platform_name(url):
@@ -34,14 +38,27 @@ def ytdlp_options(url, **overrides):
         "extractor_retries": 1,
         "js_runtimes": {"node": {}, "deno": {}},
     }
+    # An explicitly configured provider enables anonymous YouTube extraction.
+    # Tokens are minted locally; no account cookie jar is imported in this mode.
+    pot_home = os.environ.get("YOUTUBE_POT_SERVER_HOME", "").strip() if platform == "YOUTUBE" else ""
+    if pot_home:
+        if not (Path(pot_home) / "build" / "generate_once.js").is_file():
+            raise ValueError("Penyedia PO Token YouTube belum terpasang dengan benar di server.")
+        options["extractor_args"] = {
+            "youtube": {"player_client": ["mweb"], "fetch_pot": ["always"]},
+            "youtubepot-bgutilscript": {"server_home": [pot_home]},
+        }
     proxy = os.environ.get(f"{platform}_PROXY", "").strip()
     if proxy:
         options["proxy"] = proxy
     elif settings.PROXIES:
         options["proxy"] = random.choice(settings.PROXIES)
 
-    cookie_text = os.environ.get(f"{platform}_COOKIES", "").strip()
+    cookie_text = "" if pot_home else os.environ.get(f"{platform}_COOKIES", "").strip()
     temporary = None
+    # The script provider shares its cache; serialize it and bound CPU usage.
+    if pot_home and not _youtube_pot_slot.acquire(timeout=3):
+        raise ValueError("YouTube sedang memproses video lain. Coba lagi sebentar.")
     try:
         if cookie_text:
             if "\t" not in cookie_text and not cookie_text.startswith("#"):
@@ -58,7 +75,7 @@ def ytdlp_options(url, **overrides):
                 temporary = handle.name
                 handle.write(cookie_text.rstrip() + "\n")
             options["cookiefile"] = temporary
-        else:
+        elif not pot_home:
             backend = Path(__file__).resolve().parent
             candidates = [backend / f"cookies_{platform.lower()}.txt", backend / "cookies.txt", backend.parent / "cookies.txt"]
             for path in candidates:
@@ -70,3 +87,5 @@ def ytdlp_options(url, **overrides):
     finally:
         if temporary:
             Path(temporary).unlink(missing_ok=True)
+        if pot_home:
+            _youtube_pot_slot.release()

@@ -4,7 +4,7 @@ import { backendUrl, checkBackend, processPayload } from './mediaClient';
 import {
   Search, Download, Loader2, AlertCircle, CheckCircle,
   Tv, Camera, Music, Globe, Image as ImageIcon,
-  Sun, Moon, Clock, Volume2, RefreshCw, Play, Sparkles,
+  Sun, Moon, Clock, Volume2, VolumeX, RefreshCw, Play, Sparkles,
   Clipboard, X, Zap, Film, ShieldCheck, ExternalLink, Activity,
   Sliders, Smartphone, Monitor, Pause, Scissors,
   ChevronDown, ChevronUp, HelpCircle, Info, FileText, Check, Shield, Layers, ArrowRight
@@ -277,6 +277,9 @@ export default function App() {
   const [videoError, setVideoError] = useState(false);
   const [streamAttempt, setStreamAttempt] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [previewMuted, setPreviewMuted] = useState(true);
+  const [previewNeedsTap, setPreviewNeedsTap] = useState(false);
+  const [previewSequence, setPreviewSequence] = useState(0);
   const [isVertical, setIsVertical] = useState(false);
   const [videoRatio, setVideoRatio] = useState('Otomatis');
   const [toast, setToast] = useState('');
@@ -296,6 +299,8 @@ export default function App() {
 
   const videoRef = useRef(null);
   const audioRef = useRef(null);
+  const previewRef = useRef(null);
+  const autoplayAttemptRef = useRef(null);
   const trackRef = useRef(null);
   const dragRef = useRef(null);
   const infoRequestRef = useRef(null);
@@ -315,6 +320,21 @@ export default function App() {
   }, []);
 
   useEffect(() => () => infoRequestRef.current?.abort(), []);
+
+  // Only a newly fetched result moves the viewport, never playback or export updates.
+  useEffect(() => {
+    if (!previewSequence) return;
+    const frame = requestAnimationFrame(() => {
+      const preview = previewRef.current;
+      if (!preview) return;
+      preview.focus({ preventScroll: true });
+      preview.scrollIntoView({
+        behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth',
+        block: 'start',
+      });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [previewSequence]);
 
   useEffect(() => {
     const updateSection = () => {
@@ -397,12 +417,38 @@ export default function App() {
     const a = audioRef.current;
     if (!v) return;
     if (v.paused) {
-      v.play().catch(() => {});
+      v.play().catch(() => setPreviewNeedsTap(true));
       if (a) a.play().catch(() => {});
     } else {
       v.pause();
       if (a) a.pause();
     }
+  };
+
+  const syncPreviewAudio = () => {
+    const v = videoRef.current;
+    const a = audioRef.current;
+    if (!v || !a) return;
+    a.muted = v.muted;
+    a.volume = v.volume;
+    a.currentTime = v.currentTime;
+    if (!v.paused) a.play().catch(() => {});
+  };
+
+  const startPreview = (v) => {
+    if (autoplayAttemptRef.current === v) return;
+    autoplayAttemptRef.current = v;
+    v.play().catch((error) => {
+      if (videoRef.current === v && error.name !== 'AbortError') setPreviewNeedsTap(true);
+    });
+  };
+
+  const togglePreviewSound = () => {
+    const v = videoRef.current;
+    if (!v) return;
+    v.muted = !v.muted;
+    setPreviewMuted(v.muted);
+    syncPreviewAudio();
   };
 
   /* ---- Timeline potong pointer (Mouse & Touch HP) ------------------------ */
@@ -490,7 +536,7 @@ export default function App() {
     const controller = new AbortController();
     infoRequestRef.current = controller;
     const requestedUrl = url.trim();
-    setState('parsing'); setError(''); setVideoError(false);
+    setState('parsing'); setError(''); setVideoError(false); setIsPlaying(false);
     try {
       const r = await fetch(`${API}/api/info`, {
         signal: controller.signal,
@@ -525,6 +571,8 @@ export default function App() {
       setStart(0); setEnd(dur); setNow(0); setResolution('best'); setFormat('mp4');
       setVideoRatio('Otomatis'); setIsVertical(false);
       setVideoError(false); setStreamAttempt(0);
+      setPreviewMuted(true); setPreviewNeedsTap(false); autoplayAttemptRef.current = null;
+      setPreviewSequence((sequence) => sequence + 1);
       setState('preview');
     } catch (e) {
       if (controller.signal.aborted || infoRequestRef.current !== controller) return;
@@ -637,7 +685,6 @@ export default function App() {
           ].map(([id, label, Icon]) => <a key={id} href={`#${id}`} className={activeSection === id ? 'studio-nav-primary' : ''}
             aria-current={activeSection === id ? 'location' : undefined} onClick={() => setActiveSection(id)}><Icon size={19} /><span>{label}</span></a>)}
         </nav>
-        <div className="sidebar-note"><Scissors size={26} strokeWidth={1.4} /><p>Momen bagus<br />layak disimpan.</p><span>Video & audio, versi kamu.</span></div>
         <div className="sidebar-bottom"><span className="sidebar-dot" /> Ruang kreatifmu</div>
       </aside>
 
@@ -655,9 +702,9 @@ export default function App() {
 
       <main className="page-width studio-main">
         <section className="studio-intro" aria-labelledby="page-title">
-          <h1 id="page-title">Momenmu. <span>Versimu.</span></h1>
+          <h1 id="page-title">Studio video<span>.</span></h1>
           <div className="intro-note">
-            <p>Potong video atau ambil audionya. Mulai dari satu tautan.</p>
+            <p>Tempel tautan, pilih bagian, lalu unduh.</p>
           </div>
         </section>
 
@@ -673,9 +720,8 @@ export default function App() {
           </div>
           <div className="converter-body">
             <div className="source-form">
-              <h2>Tempel. Potong. Simpan.</h2>
-              <p>Videonya dari mana? Masukkan tautannya di bawah.</p>
               <label htmlFor="video-url">Tautan video</label>
+              <div className="source-entry">
               <div className={`url-field ${state === 'error' ? 'has-error' : ''}`}>
                 {active ? <img src={active.logo} alt="" width="20" height="20" /> : <Globe size={20} />}
                 <input id="video-url" type="text" inputMode="url" autoComplete="off" spellCheck="false"
@@ -689,30 +735,17 @@ export default function App() {
                 <button className="primary-button" onClick={fetchInfo} disabled={busy || state === 'parsing' || !url.trim()}>
                   {state === 'parsing' ? <><Loader2 size={18} className="animate-spin" /> Mengambil video…</> : <>Ambil video <ArrowRight size={18} /></>}
                 </button>
-                <button className="secondary-button" onClick={handlePaste} disabled={busy || state === 'parsing'}><Clipboard size={17} /> Tempel tautan</button>
               </div>
-              <p className="url-help" id="url-help" role="status">{state === 'parsing' ? 'Sedang membaca video. Beberapa platform memerlukan waktu lebih lama.' : active ? `Tautan ${active.name} terdeteksi. Siap diambil.` : 'Video publik saja. Pilihan format tersedia setelah video dimuat.'}</p>
+              </div>
+              <div className="source-footnote">
+                <p className="url-help" id="url-help" role="status">{state === 'parsing' ? 'Sedang membaca video. Tunggu sebentar…' : active ? `Tautan ${active.name} terdeteksi.` : 'YouTube, TikTok, Douyin, dan 4 platform lainnya.'}</p>
+                <button className="paste-action" onClick={handlePaste} disabled={busy || state === 'parsing'}><Clipboard size={15} /> Tempel tautan</button>
+              </div>
             </div>
           </div>
-          <div className="platform-rail">
-            <span className="platform-caption">Platform yang didukung</span>
-            <div className="platform-options">{PLATFORMS.map(p => (
-              <button key={p.key} className={`platform-option ${active?.key === p.key ? 'is-detected' : ''}`}
-                aria-label={`Gunakan tautan ${p.name}`} disabled={busy}
-                onClick={() => { document.getElementById('video-url')?.focus(); setToast(`Tempel tautan ${p.name} pada kolom video.`); }}>
-                <span>{p.key === 'x' ? 'X / Twitter' : p.name}</span>
-              </button>
-            ))}</div>
-          </div>
+          {state === 'parsing' && <div className="converter-progress" aria-hidden="true"><span /></div>}
         </section>
-        <aside className="media-feature" aria-label="Video dan audio sesuai pilihanmu">
-          <div className="media-feature-heading"><span>Lebih sedikit durasi.<br />Lebih banyak cerita.</span><ArrowRight size={23} /></div>
-          <MediaArtwork />
-          <div className="media-feature-bottom"><p>Ambil bagian terbaiknya.</p><div><span><Film size={15} /> MP4</span><span><Music size={15} /> MP3</span></div></div>
-        </aside>
         </div>
-
-        <div className="studio-assurances"><span><Check size={15} /> Tanpa akun</span><span><Monitor size={15} /> Langsung di browser</span><span><Scissors size={15} /> Potong sesuai pilihanmu</span></div>
 
         {/* Error Alert Box */}
         {state === 'error' && (
@@ -729,34 +762,17 @@ export default function App() {
         {/* STUDIO WORKSPACE (PREVIEW & TRIMMING CONTROLS)                 */}
         {/* ============================================================== */}
         {(state === 'preview' || busy) && (
-          <section className="studio-editor anim-fade-up space-y-4 sm:space-y-5" aria-label="Pratinjau dan pengaturan potongan">
+          <section id="preview" ref={previewRef} tabIndex={-1} className="studio-editor space-y-4 sm:space-y-5" aria-label="Pratinjau dan pengaturan potongan">
             
             {/* ============================================================== */}
-            {/* 1. VIDEO PREVIEW — playback starts on user interaction.       */}
+            {/* 1. VIDEO PREVIEW — muted autoplay with an explicit sound control. */}
             {/* ============================================================== */}
             <div className="editor-preview glass-studio-card rounded-2xl overflow-hidden bg-black/90 shadow-2xl border border-slate-200/80 dark:border-white/10">
               
               {/* Player Header / Status Bar */}
-              <div className="px-4 py-2.5 sm:py-3 bg-slate-900/95 border-b border-white/10 flex items-center justify-between flex-wrap gap-2 text-[11px] sm:text-xs font-mono text-slate-300">
-                <div className="flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse shadow-[0_0_8px_#f43f5e]" />
-                  <span className="font-bold tracking-wider text-slate-200">Pratinjau video</span>
-                </div>
-                
-                {/* Dynamic Auto Aspect Ratio Badge */}
-                <div className="flex items-center gap-2">
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 text-[10px] sm:text-[11px] font-mono font-bold shadow-sm">
-                    <Monitor size={12} className="text-cyan-400" />
-                    <span>Rasio: {videoRatio}</span>
-                  </span>
-                  
-                  {active && (
-                    <span className={`inline-flex items-center gap-1 text-[10px] sm:text-xs font-bold px-2 py-0.5 rounded-lg border ${active.badgeClass}`}>
-                      <img src={active.logo} className="w-3.5 h-3.5 rounded-sm object-cover" alt={active.name} />
-                      <span>{active.name}</span>
-                    </span>
-                  )}
-                </div>
+              <div className="preview-heading">
+                <h2><Play size={16} /> Preview video</h2>
+                {active && <span>{active.name} · {fmt(video.duration)}</span>}
               </div>
 
               {/* Responsive Video Container - Automatically Fits Vertical (TikTok/Reels) or Landscape (YouTube) */}
@@ -800,18 +816,24 @@ export default function App() {
                       src={streamSrc}
                       poster={video.thumbnail}
                       controls
+                      autoPlay
+                      muted={previewMuted}
                       loop
                       playsInline
-                      preload="metadata"
+                      preload="auto"
+                      onCanPlay={(e) => startPreview(e.currentTarget)}
                       onPlay={() => {
+                        autoplayAttemptRef.current = videoRef.current;
+                        setPreviewNeedsTap(false);
                         setIsPlaying(true);
-                        if (audioRef.current && audioRef.current.paused) audioRef.current.play().catch(() => {});
+                        syncPreviewAudio();
                       }}
                       onPause={() => {
                         setIsPlaying(false);
                         if (audioRef.current && !audioRef.current.paused) audioRef.current.pause();
                       }}
                       onVolumeChange={(e) => {
+                        setPreviewMuted(e.target.muted);
                         if (audioRef.current) {
                           audioRef.current.muted = e.target.muted;
                           audioRef.current.volume = e.target.volume;
@@ -902,12 +924,24 @@ export default function App() {
                         key={`aud-${streamAttempt}-${audioSrc}`}
                         src={audioSrc}
                         preload="auto"
+                        muted={previewMuted}
+                        onCanPlay={syncPreviewAudio}
                         loop
                       />
                     )}
                   </>
                 )}
               </div>
+
+              {!videoError && <div className="preview-playback">
+                <span role="status">{previewNeedsTap ? 'Tekan putar untuk mulai.' : isPlaying ? (previewMuted ? 'Diputar tanpa suara' : 'Sedang diputar') : 'Preview dijeda'}</span>
+                <div>
+                  {previewNeedsTap && <button onClick={togglePlay}><Play size={15} /> Putar preview</button>}
+                  <button onClick={togglePreviewSound} aria-label={previewMuted ? 'Aktifkan suara' : 'Bisukan preview'} aria-pressed={!previewMuted}>
+                    {previewMuted ? <VolumeX size={16} /> : <Volume2 size={16} />}{previewMuted ? 'Aktifkan suara' : 'Bisukan'}
+                  </button>
+                </div>
+              </div>}
 
               {/* Video Title & Meta Bar */}
               <div className="p-3.5 sm:p-4 bg-slate-900/60 border-t border-white/10 flex items-start gap-3">
@@ -934,13 +968,7 @@ export default function App() {
                   </div>
                   <div className="mt-2 flex flex-wrap items-center gap-3 text-[11px] sm:text-xs font-mono text-slate-400">
                     <span className="inline-flex items-center gap-1">
-                      <Clock size={13} className="text-rose-500" /> Total Durasi: {fmt(video.duration)}
-                    </span>
-                    <span className="inline-flex items-center gap-1 text-rose-400 font-bold">
-                      <Scissors size={13} /> Durasi Klip: {fmt(clipLen)}
-                    </span>
-                    <span className="inline-flex items-center gap-1 text-cyan-400 font-semibold">
-                      <Film size={13} /> Estimasi: ~{estSizeMb} MB
+                      <Monitor size={13} /> {videoRatio}
                     </span>
                   </div>
                 </div>
@@ -968,9 +996,9 @@ export default function App() {
                   <span className="text-[10px] font-mono text-slate-400 uppercase mr-1">Preset:</span>
                   {[
                     { label: '5s', sec: 5 },
-                    { label: '15s Reels', sec: 15 },
-                    { label: '30s TikTok', sec: 30 },
-                    { label: '60s Shorts', sec: 60 },
+                    { label: '15s', sec: 15 },
+                    { label: '30s', sec: 30 },
+                    { label: '60s', sec: 60 },
                   ].map((p) => (
                     <button
                       key={p.label}
@@ -1088,6 +1116,9 @@ export default function App() {
               </div>
 
               {/* Timecode Steppers & Quick Mark Buttons */}
+              <div className="trim-range"><span>Mulai <strong>{fmtPrecise(start)}</strong></span><span>Selesai <strong>{fmtPrecise(end)}</strong></span></div>
+              <details className="precision-options">
+              <summary>Atur waktu presisi <ChevronDown size={16} /></summary>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                 {/* Mulai (Start) Stepper */}
                 <div className="time-stepper bg-slate-100/80 dark:bg-slate-900/80 border border-rose-500/30 rounded-xl p-3 flex items-center justify-between">
@@ -1135,6 +1166,7 @@ export default function App() {
                   Tandai selesai
                 </button>
               </div>
+              </details>
 
             </div>
 
@@ -1147,10 +1179,7 @@ export default function App() {
               <div className="md:col-span-7 glass-studio-card p-4 sm:p-5 rounded-2xl space-y-3.5">
                 <div className="flex items-center justify-between">
                   <span className="text-[11px] sm:text-xs font-mono font-bold uppercase text-rose-600 dark:text-rose-400 flex items-center gap-1">
-                    <Sliders size={13} /> PILIH FORMAT KELUARAN
-                  </span>
-                  <span className="text-[10px] font-mono text-emerald-500 dark:text-emerald-400 font-bold bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
-                    MP4 · MP3
+                    <Sliders size={13} /> Format unduhan
                   </span>
                 </div>
 
@@ -1352,28 +1381,6 @@ export default function App() {
       )}
     </div>
   );
-}
-
-function MediaArtwork() {
-  return <svg className="media-artwork" viewBox="0 0 400 300" aria-hidden="true" focusable="false">
-    <ellipse cx="207" cy="260" rx="126" ry="13" fill="var(--color-art-shadow)" />
-    <g transform="rotate(13 227 139)">
-      <rect x="135" y="45" width="196" height="167" rx="18" fill="var(--color-art-sheet)" />
-      <rect x="149" y="60" width="168" height="137" rx="9" fill="var(--color-art-ground)" />
-      <path d="M161 166L202 126L231 151L254 133L305 183H161Z" fill="var(--color-art-line)" />
-      <circle cx="275" cy="94" r="14" fill="var(--color-art-sheet)" />
-    </g>
-    <g transform="rotate(-13 171 169)">
-      <rect x="58" y="102" width="215" height="148" rx="19" fill="var(--color-art-depth)" />
-      <rect x="58" y="92" width="215" height="148" rx="19" fill="var(--color-art-lime)" />
-      <path d="M149 132L193 159Q202 165 193 171L149 198Q141 203 141 193V137Q141 127 149 132Z" fill="var(--color-art-ground)" />
-      {[80,112,144,176,208,240].map(x => <g key={x}><rect x={x} y="103" width="12" height="7" rx="2" fill="var(--color-art-ground)" /><rect x={x} y="222" width="12" height="7" rx="2" fill="var(--color-art-ground)" /></g>)}
-    </g>
-    <path d="M315 211L345 241M319 247L346 216" stroke="var(--color-art-sheet)" strokeWidth="3" strokeLinecap="round" />
-    <circle cx="308" cy="203" r="9" fill="none" stroke="var(--color-art-sheet)" strokeWidth="3" />
-    <circle cx="310" cy="255" r="9" fill="none" stroke="var(--color-art-sheet)" strokeWidth="3" />
-    <path d="M34 77L100 60" stroke="var(--color-art-line)" strokeWidth="2" strokeDasharray="5 7" />
-  </svg>;
 }
 
 function mapNetErr(e) {

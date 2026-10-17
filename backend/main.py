@@ -185,11 +185,24 @@ def stream_video_proxy(url: str, request: Request, vid: Optional[str] = None):
         if range_header:
             headers["Range"] = range_header
         attempts = [headers, _fallback_headers_for(req_url), {"User-Agent": DESKTOP_UA, "Accept": "*/*"}]
+        host = (urlsplit(req_url).hostname or "").lower()
+        youtube_cdn = host == "googlevideo.com" or host.endswith(".googlevideo.com")
+        range_fallback = False
         for candidate in attempts:
+            range_fallback = False
             candidate = dict(candidate)
             if range_header:
                 candidate["Range"] = range_header
             response, pool = open_public_stream(req_url, candidate)
+            # Some signed YouTube URLs allow full playback but reject Range.
+            # Preserve the extraction headers and retry as a normal GET. The
+            # browser must receive the actual full-response status, never 206.
+            if youtube_cdn and range_header and response.status == 403:
+                response.close()
+                pool.close()
+                candidate.pop("Range", None)
+                response, pool = open_public_stream(req_url, candidate)
+                range_fallback = True
             if response.status not in (400, 401, 403):
                 break
             response.close()
@@ -199,6 +212,15 @@ def stream_video_proxy(url: str, request: Request, vid: Optional[str] = None):
             k: v for k, v in response.headers.items()
             if k.lower() in ("content-type", "content-range", "accept-ranges", "etag", "last-modified")
         }
+        if range_fallback and upstream_status == 200:
+            resp_headers = {k: v for k, v in resp_headers.items() if k.lower() not in ("accept-ranges", "content-range")}
+            resp_headers["Accept-Ranges"] = "none"
+        # Streaming decodes Content-Encoding, so only relay a length when it
+        # still describes the bytes sent to the browser.
+        if response.headers.get("Content-Encoding", "identity").lower() == "identity":
+            length = response.headers.get("Content-Length", "")
+            if length.isdigit():
+                resp_headers["Content-Length"] = length
         if upstream_status == 416:
             response.close()
             pool.close()

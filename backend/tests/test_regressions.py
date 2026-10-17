@@ -140,6 +140,47 @@ def test_upstream_ignoring_range_remains_200(monkeypatch):
     assert "content-range" not in response.headers
 
 
+def test_youtube_range_rejection_falls_back_to_full_playback(monkeypatch):
+    url = "https://rr1.googlevideo.com/videoplayback?sig=keep-this"
+    main._remember_stream_headers(url, {"User-Agent": "extractor-agent", "Referer": "https://www.youtube.com/"})
+    rejected, rejected_pool = upstream(403)
+    calls = []
+    def open_stream(target, headers):
+        assert target == url
+        assert headers["User-Agent"] == "extractor-agent"
+        calls.append(dict(headers))
+        if "Range" in headers:
+            return rejected, rejected_pool
+        return upstream(200, {"Content-Length": "11", "Accept-Ranges": "bytes"})
+    monkeypatch.setattr(main, "open_public_stream", open_stream)
+    with TestClient(main.app) as client:
+        response = client.get("/api/stream", params={"url": url}, headers={"Range": "bytes=0-4"})
+    assert response.status_code == 200
+    assert response.content == b"video-bytes"
+    assert response.headers["content-length"] == "11"
+    assert response.headers["accept-ranges"] == "none"
+    assert "content-range" not in response.headers
+    assert len(calls) == 2 and "Range" not in calls[1]
+    rejected.close.assert_called_once()
+    rejected_pool.close.assert_called_once()
+    assert "Range" not in main._get_stream_headers(url)
+
+
+def test_youtube_range_fallback_does_not_mask_forbidden_response(monkeypatch):
+    monkeypatch.setattr(main, "open_public_stream", lambda *a: upstream(403))
+    with TestClient(main.app) as client:
+        response = client.get("/api/stream", params={"url": "https://rr1.googlevideo.com/video"}, headers={"Range": "bytes=0-4"})
+    assert response.status_code == 502
+
+
+def test_decoded_stream_does_not_relay_compressed_length(monkeypatch):
+    monkeypatch.setattr(main, "open_public_stream", lambda *a: upstream(200, {"Content-Length": "4", "Content-Encoding": "gzip"}))
+    with TestClient(main.app) as client:
+        response = client.get("/api/stream", params={"url": "https://cdn.example/video"})
+    assert response.content == b"video-bytes"
+    assert "content-length" not in response.headers
+
+
 def test_stream_rejection_is_client_error(monkeypatch):
     def reject(*args):
         raise network.UnsafeURL("Private address")

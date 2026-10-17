@@ -1,7 +1,7 @@
 """HTTP streaming with public-address validation and DNS-pinned connections."""
 import ipaddress
 import socket
-from urllib.parse import urlsplit, urljoin
+from urllib.parse import urlsplit, urljoin, parse_qs
 
 import urllib3
 
@@ -38,7 +38,21 @@ def resolve_public_url(url):
             addr = ipaddress.ip_address(ip)
             if not addr.is_global or addr.is_multicast or (getattr(addr, "ipv4_mapped", None) and not addr.ipv4_mapped.is_global):
                 raise UnsafeURL("URL menuju jaringan privat atau lokal tidak diizinkan.")
-        return parts, port, ips[0]
+        selected = ips[0]
+        host = parts.hostname.lower()
+        if host == "googlevideo.com" or host.endswith(".googlevideo.com"):
+            # YouTube signs media URLs for the extraction IP. Keep the address
+            # family when connecting to the CDN; do not connect to the query IP.
+            try:
+                signed_ip = ipaddress.ip_address(parse_qs(parts.query).get("ip", [""])[0])
+            except ValueError:
+                signed_ip = None
+            if signed_ip:
+                matching = [ip for ip in ips if ipaddress.ip_address(ip).version == signed_ip.version]
+                if not matching:
+                    raise UnsafeURL("Keluarga alamat CDN YouTube tidak tersedia.")
+                selected = matching[0]
+        return parts, port, selected
     except (ValueError, socket.gaierror) as exc:
         raise UnsafeURL(str(exc)) from exc
 

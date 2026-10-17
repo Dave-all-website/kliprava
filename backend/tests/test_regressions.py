@@ -18,6 +18,23 @@ def dns(ip):
     return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (ip, 443))]
 
 
+@pytest.mark.parametrize("host, signed_ip, expected", [
+    ("rr1.googlevideo.com", "2606:4700::1111", "2606:4700::2222"),
+    ("rr1.googlevideo.com", "93.184.216.35", "93.184.216.34"),
+    ("googlevideo.com.evil.example", "2606:4700::1111", "93.184.216.34"),
+])
+def test_youtube_cdn_uses_signed_address_family_not_query_address(monkeypatch, host, signed_ip, expected):
+    monkeypatch.setattr(network.socket, "getaddrinfo", lambda *a, **k: dns("93.184.216.34") + dns("2606:4700::2222"))
+    _, _, address = network.resolve_public_url(f"https://{host}/videoplayback?ip={signed_ip}")
+    assert address == expected
+
+
+def test_youtube_family_selection_still_rejects_private_dns_answers(monkeypatch):
+    monkeypatch.setattr(network.socket, "getaddrinfo", lambda *a, **k: dns("127.0.0.1") + dns("2606:4700::2222"))
+    with pytest.raises(network.UnsafeURL):
+        network.resolve_public_url("https://rr1.googlevideo.com/video?ip=2606:4700::1111")
+
+
 @pytest.mark.parametrize("ip", ["127.0.0.1", "10.0.0.1", "169.254.169.254", "::1", "::ffff:127.0.0.1", "fc00::1", "224.0.0.1"])
 def test_private_and_special_addresses_rejected(monkeypatch, ip):
     monkeypatch.setattr(network.socket, "getaddrinfo", lambda *a, **k: dns(ip))

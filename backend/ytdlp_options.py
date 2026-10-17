@@ -38,6 +38,14 @@ def ytdlp_options(url, **overrides):
         "extractor_retries": 1,
         "js_runtimes": {"node": {}, "deno": {}},
     }
+    if platform == "YOUTUBE":
+        ip_family = os.environ.get("YOUTUBE_IP_FAMILY", "").strip()
+        if ip_family not in ("", "4", "6"):
+            raise ValueError("YOUTUBE_IP_FAMILY harus kosong, 4, atau 6.")
+        if ip_family:
+            # Also passed to the PO Token provider so attestation and extraction
+            # use the same network family. Never applies to other platforms.
+            options["source_address"] = "::" if ip_family == "6" else "0.0.0.0"
     # An explicitly configured provider enables anonymous YouTube extraction.
     # Tokens are minted locally; no account cookie jar is imported in this mode.
     pot_home = os.environ.get("YOUTUBE_POT_SERVER_HOME", "").strip() if platform == "YOUTUBE" else ""

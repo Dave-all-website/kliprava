@@ -113,6 +113,15 @@ def test_missing_youtube_provider_fails_before_network(monkeypatch, tmp_path):
             pytest.fail("Missing provider should not reach extraction")
 
 
+@pytest.mark.parametrize("family, address", [("6", "::"), ("4", "0.0.0.0"), ("", None)])
+def test_youtube_network_family_does_not_affect_other_platforms(monkeypatch, family, address):
+    monkeypatch.setenv("YOUTUBE_IP_FAMILY", family)
+    with ytdlp_options("https://youtu.be/abc") as opts:
+        assert opts.get("source_address") == address
+    with ytdlp_options("https://www.tiktok.com/@test/video/123") as opts:
+        assert "source_address" not in opts
+
+
 @pytest.mark.parametrize("message, expected", [
     ("Sign in to confirm you're not a bot", "YouTube meminta verifikasi"),
     ("Sign in to confirm you\u2019re not a bot", "YouTube meminta verifikasi"),
